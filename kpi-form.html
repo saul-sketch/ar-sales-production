@@ -238,8 +238,9 @@
     }
 
     // ===== Visits =====
-    // stage = how far the visit got (single funnel selector): came|applied|denied|approved|sold
-    const FUNNEL=[['came','Solo vino'],['applied','Aplicó'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
+    // stage = how far the visit got (single funnel selector): came|denied|approved|sold
+    // ('came' = visited but did NOT apply; every application resolves to denied/approved/sold)
+    const FUNNEL=[['came','Solo vino (no aplicó)'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
     // origin = who brought the visit (closers tag this)
     const ORIGINS=[
       ['cc','Call Center'],            // a setter booked it
@@ -321,8 +322,8 @@
       if(visitErrors().length){confirmReport();return;}
       const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Enviando…';
       const cleanVisits=visits.filter(v=>(v.client||'').trim());
-      // derive funnel counts from each visit's single stage
-      const applied=cleanVisits.filter(v=>['applied','denied','approved','sold'].includes(v.stage)).length;
+      // derive funnel counts: applied = everyone who got a credit result (negó/aprobó/vendió)
+      const applied=cleanVisits.filter(v=>['denied','approved','sold'].includes(v.stage)).length;
       const approved=cleanVisits.filter(v=>['approved','sold'].includes(v.stage)).length;
       const denied=cleanVisits.filter(v=>v.stage==='denied').length;
       const sold=cleanVisits.filter(v=>v.stage==='sold').length;
