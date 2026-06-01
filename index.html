@@ -283,6 +283,7 @@
         const agents=await aRes.json();
         window._mapping=await mRes.json();
         window._selfReports=await srRes.json();
+        try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=30`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
         window._closerSet=new Set(agents.filter(a=>a.role==='closer').map(a=>a.name.toLowerCase()));
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
         if(me.role!=='manager'){
@@ -366,7 +367,53 @@
     function render(){
       const s=buildStats();
       renderPersonal(s);
+      renderReconciliation();
       renderLeaderboards(s);
+    }
+
+    function renderReconciliation(){
+      // Manager-only: calendar shows vs reported visits, by phone, day by day
+      const host=document.getElementById('personal');
+      if(me.role!=='manager')return;
+      const rec=(window._recon||[]);
+      if(!rec.length)return;
+      const totShow=rec.reduce((a,r)=>a+(r.showed_count||0),0);
+      const totMatch=rec.reduce((a,r)=>a+(r.matched||0),0);
+      const totCalOnly=rec.reduce((a,r)=>a+(r.calendar_only||0),0);
+      const totRepOnly=rec.reduce((a,r)=>a+(r.report_only||0),0);
+      const avgMr=totShow>0?(totMatch/totShow*100):0;
+      const rows=rec.map(r=>{
+        const mr=r.match_rate||0;
+        const mrCls=mr>=80?'good':mr>=50?'mid':'low';
+        const d=new Date(r.recon_date+'T00:00:00');
+        const dn=`${d.getDate()}/${d.getMonth()+1}`;
+        const calOnlyNames=(r.detail&&r.detail.calendar_only||[]).map(x=>x.title||('...'+x.phone)).slice(0,4).join(', ');
+        return `<tr>
+          <td style="font-weight:700;">${dn}</td>
+          <td>${r.showed_count||0}</td><td>${r.reported_count||0}</td>
+          <td class="val-strong">${r.matched||0}</td>
+          <td class="pct ${mrCls}">${mr.toFixed(0)}%</td>
+          <td style="color:var(--red);font-weight:600;">${r.calendar_only||0}${calOnlyNames?`<div style="font-size:10px;color:var(--gray-500);font-weight:400;max-width:240px;white-space:normal;">${escapeHtml(calOnlyNames)}</div>`:''}</td>
+          <td style="color:var(--orange);font-weight:600;">${r.report_only||0}</td>
+        </tr>`;
+      }).join('');
+      const html=`<div class="section-card" style="border:1.5px solid #bfdbfe;">
+        <h3>🔗 Reconciliación diaria — Calendario vs Reporte</h3>
+        <p class="section-sub">Cruce exacto por teléfono. <b style="color:var(--red);">Cal. solo</b> = el calendario dice que llegó pero el manager NO lo reportó. <b style="color:var(--orange);">Rep. solo</b> = visita reportada sin cita (walk-in o cita no marcada).</p>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
+          <div class="avg-card"><div class="v">${avgMr.toFixed(0)}%</div><div class="k">Match promedio</div></div>
+          <div class="avg-card"><div class="v" style="color:var(--green);">${totMatch}</div><div class="k">Cuadran</div></div>
+          <div class="avg-card"><div class="v" style="color:var(--red);">${totCalOnly}</div><div class="k">Llegó sin reporte</div></div>
+          <div class="avg-card"><div class="v" style="color:var(--orange);">${totRepOnly}</div><div class="k">Reporte sin cita</div></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Día</th><th>Showed 📅</th><th>Reporte 👔</th><th>Cuadran</th><th>Match%</th><th>Cal. solo ⚠</th><th>Rep. solo</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+        <p style="font-size:11px;color:var(--gray-400);margin-top:8px;">Se actualiza automático cada día. ${rec.length} días procesados.</p>
+      </div>`;
+      // append after personal (which is empty for managers) — prepend into host
+      host.innerHTML=html+host.innerHTML;
     }
 
     function periodLabel(){return {mtd:'Mes actual',30:'Últimos 30 días',qtd:'Este trimestre',all:'Todo el tiempo'}[filterPeriod];}
