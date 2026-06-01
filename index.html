@@ -161,10 +161,10 @@
       <div class="filters">
         <span class="filter-label">Periodo</span>
         <div class="filter-group" id="period-filter">
-          <button class="filter-tab" data-period="mtd">Mes actual</button>
+          <button class="filter-tab active" data-period="mtd">Mes actual</button>
           <button class="filter-tab" data-period="30">30d</button>
           <button class="filter-tab" data-period="qtd">Trimestre</button>
-          <button class="filter-tab active" data-period="all">Todo</button>
+          <button class="filter-tab" data-period="all">Todo</button>
         </div>
         <span class="filter-label" id="loc-lbl">Locación</span>
         <div class="filter-group" id="loc-filter">
@@ -200,7 +200,7 @@
 
     let me={name:null,email:null,role:null}; // role: manager|closer|setter
     let allReports=[];
-    let filterPeriod='all',filterLoc='all';
+    let filterPeriod='mtd',filterLoc='all';
     let lbTab='closer',lbSort={key:'sold',dir:-1};
 
     document.addEventListener('DOMContentLoaded',async()=>{
