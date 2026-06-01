@@ -233,26 +233,72 @@
       return {name:finalName,email,role:role||'agent'};
     }
 
+    const PROXY_URL='https://xwxjutaqouaeocvxawlw.supabase.co/functions/v1/dialer-proxy';
+
+    function periodRange(){
+      const now=new Date();
+      const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const to=iso(now);
+      let from;
+      if(filterPeriod==='mtd')from=iso(new Date(now.getFullYear(),now.getMonth(),1));
+      else if(filterPeriod==='30'){const c=new Date();c.setDate(c.getDate()-30);from=iso(c);}
+      else if(filterPeriod==='qtd'){const q=Math.floor(now.getMonth()/3);from=iso(new Date(now.getFullYear(),q*3,1));}
+      else from='2026-01-01';
+      return {from,to};
+    }
+
+    async function loadDialer(){
+      // Live dialer feed via secure proxy → calls + appointments per agent, mapped to Sales Report names
+      try{
+        const {from,to}=periodRange();
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${from}&to=${to}&tz=-300`,{headers:SUPA_HEADERS});
+        if(!res.ok)throw new Error(res.status);
+        const data=await res.json();
+        const dialerAgents=data.agents||[];
+        // Map dialer_user_id → sales_report_name
+        const byUid={};(window._mapping||[]).forEach(m=>{byUid[m.dialer_user_id]=m.sales_report_name;});
+        const byName={};(window._mapping||[]).forEach(m=>{if(m.dialer_name)byName[m.dialer_name.toLowerCase()]=m.sales_report_name;});
+        const out={}; // sales_report_name(lower) → {calls, appointments}
+        dialerAgents.forEach(a=>{
+          const sr=byUid[a.agentUserId]||(a.agentName?byName[a.agentName.toLowerCase()]:null);
+          if(!sr)return;
+          const k=sr.toLowerCase();
+          if(!out[k])out[k]={calls:0,appointments:0};
+          out[k].calls+=a.calls||0;out[k].appointments+=a.appointments||0;
+        });
+        window._dialerByAgent=out;
+        window._dialerOk=true;
+      }catch(e){window._dialerByAgent={};window._dialerOk=false;console.warn('dialer feed failed',e);}
+    }
+
     async function refresh(){
       try{
-        // load reports + agents (to know who is closer vs setter)
-        const [rRes,aRes]=await Promise.all([
+        const [rRes,aRes,mRes,srRes]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/ar_daily_reports?select=date,location,visits&order=date.desc`,{headers:SUPA_HEADERS}),
-          fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role&order=name.asc`,{headers:SUPA_HEADERS})
+          fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role&order=name.asc`,{headers:SUPA_HEADERS}),
+          fetch(`${SUPA_URL}/rest/v1/ar_agent_mapping?select=dialer_user_id,dialer_name,sales_report_name`,{headers:SUPA_HEADERS}),
+          fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?select=*`,{headers:SUPA_HEADERS})
         ]);
         allReports=await rRes.json();
         const agents=await aRes.json();
+        window._mapping=await mRes.json();
+        window._selfReports=await srRes.json();
         window._closerSet=new Set(agents.filter(a=>a.role==='closer').map(a=>a.name.toLowerCase()));
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
-        // Resolve agent role if not manager
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
           const rb=document.getElementById('user-role');rb.textContent=me.role;rb.className='role-badge '+me.role;
         }
-        document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+        await loadDialer(); // live dialer feed for current period
+        document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
       }catch(e){document.getElementById('leaderboards').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}
+    }
+
+    function dialerFor(name){
+      const k=(name||'').toLowerCase();
+      return (window._dialerByAgent&&window._dialerByAgent[k])||{calls:0,appointments:0};
     }
 
     function bindFilters(){
@@ -359,24 +405,96 @@
 
       // CLOSER → cierre funnel + prospección propia
       if(isCloser&&myClose){
-        html+=funnelCard('Tu cierre',myClose,'close','Visitas que atendiste (propias, de setters y walk-ins)');
+        html+=funnelCard('Tu cierre',myClose,'close','Visitas que atendiste (propias, de setters y walk-ins)',me.name);
         html+=convCard(myClose,'close');
-        if(myProspect&&myProspect.visits>0){
-          html+=funnelCard('Tu prospección',myProspect,'prospect','Visitas que tú mismo agendaste (self-gen)');
-        }
+        const prosp=myProspect||{name:me.name,visits:0,applied:0,approved:0,sold:0,profit:0};
+        html+=funnelCard('Tu prospección',prosp,'prospect','Tus llamadas, citas y visitas self-gen',me.name);
       }
       // SETTER → prospección funnel + qué closers atendieron
-      if(!isCloser&&myProspect){
-        html+=funnelCard('Tu prospección',myProspect,'prospect','Las visitas que trajiste y su conversión a venta');
-        html+=convCard(myProspect,'prospect');
+      if(!isCloser){
+        const prosp=myProspect||{name:me.name,visits:0,applied:0,approved:0,sold:0,profit:0};
+        html+=funnelCard('Tu prospección',prosp,'prospect','Llamadas, citas, visitas que trajiste y su conversión',me.name);
+        if(myProspect)html+=convCard(myProspect,'prospect');
         html+=closersForSetter(s.reports,me.name);
       }
-      if(!myClose&&!myProspect){
-        html+=`<div class="section-card"><div class="empty">Sin producción registrada en este periodo</div></div>`;
-      }
+      // Self-report (accountability) — agent declares what they think they did vs the truth
+      html+=selfReportCard();
       host.innerHTML=html;
       // Render any charts queued
       drawQueuedCharts();
+    }
+
+    // ===== Self-report: agent declares, system compares to truth =====
+    function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+    function selfReportCard(){
+      const today=todayISO();
+      const mine=(window._selfReports||[]).find(s=>s.agent_name&&s.agent_name.toLowerCase()===me.name.toLowerCase()&&s.report_date===today);
+      // Truth for TODAY (dialer live + today's Sales Report)
+      const dl=dialerFor(me.name);
+      const todayReports=allReports.filter(r=>r.date===today&&(filterLoc==='all'||r.location===filterLoc));
+      let tVisits=0,tApplied=0,tApproved=0,tSold=0;
+      const ln=me.name.toLowerCase();
+      todayReports.forEach(r=>(r.visits||[]).forEach(v=>{
+        const c1=clean(v.closer),c2=clean(v.closer2),st=clean(v.setter);
+        const isMine=(c1&&c1.toLowerCase()===ln)||(c2&&c2.toLowerCase()===ln)||(st&&st.toLowerCase()===ln);
+        if(isMine){tVisits++;if(v.applied===true)tApplied++;if(v.result==='approved')tApproved++;if(v.sale===true)tSold++;}
+      }));
+      // NOTE: dl.calls/appointments are for the selected period, not strictly today — labeled as such
+      const rows=[
+        {k:'calls',lbl:'Llamadas',truth:dl.calls,truthLbl:'dialer (periodo)'},
+        {k:'appointments',lbl:'Citas agendadas',truth:dl.appointments,truthLbl:'calendario (periodo)'},
+        {k:'visits',lbl:'Visitas',truth:tVisits,truthLbl:'reporte hoy'},
+        {k:'applied',lbl:'Aplicaron',truth:tApplied,truthLbl:'reporte hoy'},
+        {k:'approved',lbl:'Aprobados',truth:tApproved,truthLbl:'reporte hoy'},
+        {k:'sold',lbl:'Ventas',truth:tSold,truthLbl:'reporte hoy'}
+      ];
+      return `<div class="section-card" style="border:1.5px solid #fde68a;background:#fffdf5;">
+        <h3>🙋 ¿Cuánto crees que hiciste hoy?</h3>
+        <p class="section-sub">Escribe lo que crees y compáralo con lo real. Las diferencias nos dicen qué ajustar.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Métrica</th><th>Lo que crees</th><th>Lo real</th><th>Diferencia</th></tr></thead>
+          <tbody>${rows.map(r=>{
+            const declared=mine?mine[r.k]:null;
+            const diff=declared!=null?declared-r.truth:null;
+            const diffStr=diff===null?'—':(diff>0?'+'+diff+' (de más)':diff<0?diff+' (de menos)':'✓ igual');
+            const diffCol=diff===null?'var(--gray-400)':diff===0?'var(--green)':'var(--red)';
+            return `<tr>
+              <td style="font-weight:600;">${r.lbl}</td>
+              <td><input type="number" id="sr-${r.k}" value="${declared!=null?declared:''}" min="0" style="width:70px;padding:5px 8px;border:1.5px solid var(--gray-300);border-radius:7px;font-family:inherit;"></td>
+              <td class="val-strong">${r.truth} <span style="font-size:10px;color:var(--gray-400);font-weight:400;">${r.truthLbl}</span></td>
+              <td style="color:${diffCol};font-weight:700;">${diffStr}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>
+        <button onclick="saveSelfReport()" id="sr-save-btn" style="margin-top:12px;padding:10px 18px;background:var(--primary);color:white;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;">${mine?'Actualizar mi declaración':'Guardar mi declaración'}</button>
+        <span id="sr-save-msg" style="margin-left:10px;font-size:13px;color:var(--green);"></span>
+      </div>`;
+    }
+
+    async function saveSelfReport(){
+      const val=k=>{const el=document.getElementById('sr-'+k);return el&&el.value!==''?parseInt(el.value):null;};
+      const payload={
+        agent_name:me.name,report_date:todayISO(),
+        calls:val('calls'),appointments:val('appointments'),visits:val('visits'),
+        applied:val('applied'),approved:val('approved'),sold:val('sold'),
+        submitted_at:new Date().toISOString()
+      };
+      const btn=document.getElementById('sr-save-btn');const msg=document.getElementById('sr-save-msg');
+      btn.disabled=true;btn.textContent='Guardando…';
+      try{
+        const res=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{
+          method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
+          body:JSON.stringify(payload)
+        });
+        if(!res.ok)throw new Error(await res.text());
+        // refresh self reports + re-render to update diffs
+        const sr=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?select=*`,{headers:SUPA_HEADERS});
+        window._selfReports=await sr.json();
+        msg.textContent='✓ Guardado';
+        render();
+      }catch(e){msg.style.color='var(--red)';msg.textContent='Error: '+e.message;}
+      finally{btn.disabled=false;}
     }
 
     let _chartQueue=[];
@@ -385,27 +503,34 @@
       _chartQueue=[];
     }
 
-    function funnelCard(title,o,kind,sub){
+    function funnelCard(title,o,kind,sub,agentName){
       const isClose=kind==='close';
       const tag=isClose?'<span class="tag close">cierre</span>':'<span class="tag prospect">prospección</span>';
+      const dl=dialerFor(agentName||(o.name));
+      // Top-of-funnel (dialer) only makes sense on prospección or a closer's own prospecting.
+      // On the CLOSE funnel we don't show calls (those belong to prospecting); show appointments as context only.
+      const showTop=kind==='prospect';
       const stages=[
-        {name:'Llamadas',pending:true},
-        {name:'Citas agendadas',pending:true},
-        {name:isClose?'Visitas atendidas':'Visitas traídas',val:o.visits,color:'#3b82f6'},
+        ...(showTop?[
+          {name:'Llamadas',val:dl.calls,color:'#0ea5e9',isDialer:true},
+          {name:'Citas agendadas',val:dl.appointments,conv:pct(o.visits,dl.appointments),color:'#6366f1',isDialer:true,convLbl:'show rate'},
+        ]:[]),
+        {name:isClose?'Visitas atendidas':'Visitas',val:o.visits,color:'#3b82f6'},
         {name:'Aplicaron',val:o.applied,conv:pct(o.applied,o.visits),color:'#06b6d4'},
         {name:'Aprobados',val:o.approved,conv:pct(o.approved,o.applied),color:'#8b5cf6'},
         {name:'Ventas',val:o.sold,conv:pct(o.sold,o.approved),color:'#10b981'}
       ];
-      const max=Math.max(o.visits,1);
+      const max=Math.max(showTop?dl.calls:o.visits,o.visits,1);
       return `<div class="section-card">
         <h3>${title}${tag}</h3>
-        <p class="section-sub">${sub} · el tope (llamadas, citas) se conecta del CRM próximamente</p>
+        <p class="section-sub">${sub}${showTop?' · llamadas y citas en vivo del dialer':''}</p>
         ${stages.map(st=>{
-          if(st.pending)return `<div class="funnel-stage pending"><div class="name">${st.name}</div><div class="bar-track"><div class="bar-fill" style="width:28%;">CRM</div></div><div class="conv">pronto</div></div>`;
-          const w=Math.max(pct(st.val,max),5);
-          return `<div class="funnel-stage"><div class="name">${st.name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${st.conv!==undefined?'↓'+st.conv.toFixed(0)+'%':''}</div></div>`;
+          const w=Math.max(pct(st.val,max),4);
+          const convTxt=st.conv!==undefined?(st.convLbl?st.convLbl+' '+st.conv.toFixed(0)+'%':'↓'+st.conv.toFixed(0)+'%'):'';
+          return `<div class="funnel-stage"><div class="name">${st.name}${st.isDialer?' <span style="font-size:9px;color:#0ea5e9;font-weight:700;">●</span>':''}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${convTxt}</div></div>`;
         }).join('')}
         ${o.profit!==undefined&&o.profit>0?`<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200);font-size:13px;color:var(--gray-600);">Monto total generado: <b style="color:var(--green);">${fmtMoney(o.profit)}</b></div>`:''}
+        ${showTop&&!window._dialerOk?`<div style="margin-top:8px;font-size:11px;color:var(--gray-400);">Dialer offline — llamadas/citas mostradas como 0</div>`:''}
       </div>`;
     }
 
