@@ -209,7 +209,9 @@
     }
 
     // ===== Visits =====
-    function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',applied:null,approvedGuess:null,soldGuess:null});renderVisits();}
+    // stage = how far the visit got (single funnel selector): came|applied|denied|approved|sold
+    const FUNNEL=[['came','Solo vino'],['applied','Aplicó'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
+    function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',stage:null});renderVisits();}
     function removeVisit(i){visits.splice(i,1);renderVisits();}
     function setV(i,k,val){visits[i][k]=val;renderVisits();}
 
@@ -224,18 +226,8 @@
           <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
           <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
           ${originRow}
-          <div class="vrow"><span class="field-lbl">Aplicó</span><div class="pills">
-            <button class="pill ${v.applied===true?'on green':''}" onclick="setV(${i},'applied',true)">Sí</button>
-            <button class="pill ${v.applied===false?'on red':''}" onclick="setV(${i},'applied',false)">No</button>
-          </div></div>
-          <div class="vrow"><span class="field-lbl">Resultado</span><div class="pills">
-            <button class="pill ${v.approvedGuess==='approved'?'on green':''}" onclick="setV(${i},'approvedGuess','approved')">Aprobó</button>
-            <button class="pill ${v.approvedGuess==='denied'?'on red':''}" onclick="setV(${i},'approvedGuess','denied')">Negó</button>
-            <button class="pill ${v.approvedGuess==='pending'?'on amber':''}" onclick="setV(${i},'approvedGuess','pending')">Pend.</button>
-          </div></div>
-          <div class="vrow"><span class="field-lbl">Vendió</span><div class="pills">
-            <button class="pill ${v.soldGuess===true?'on green':''}" onclick="setV(${i},'soldGuess',true)">Sí</button>
-            <button class="pill ${v.soldGuess===false?'on red':''}" onclick="setV(${i},'soldGuess',false)">No</button>
+          <div class="vrow"><span class="field-lbl">Llegó a</span><div class="pills">
+            ${FUNNEL.map(([k,l])=>{const cls=v.stage===k?(k==='denied'?'on red':k==='came'?'on':'on green'):'';return `<button class="pill ${cls}" onclick="setV(${i},'stage','${k}')">${l}</button>`;}).join('')}
           </div></div>
         </div>`;
       }).join('');
@@ -273,10 +265,11 @@
     async function submitReport(){
       const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Enviando…';
       const cleanVisits=visits.filter(v=>(v.client||'').trim());
-      const applied=cleanVisits.filter(v=>v.applied===true).length;
-      const approved=cleanVisits.filter(v=>v.approvedGuess==='approved').length;
-      const denied=cleanVisits.filter(v=>v.approvedGuess==='denied').length;
-      const sold=cleanVisits.filter(v=>v.soldGuess===true).length;
+      // derive funnel counts from each visit's single stage
+      const applied=cleanVisits.filter(v=>['applied','denied','approved','sold'].includes(v.stage)).length;
+      const approved=cleanVisits.filter(v=>['approved','sold'].includes(v.stage)).length;
+      const denied=cleanVisits.filter(v=>v.stage==='denied').length;
+      const sold=cleanVisits.filter(v=>v.stage==='sold').length;
       const payload={
         agent_name:me.name, role:me.role, report_date:todayISO(),
         calls:val('d-calls'), contacts:val('d-contacts'), appointments:val('d-appts'),
