@@ -211,6 +211,15 @@
     // ===== Visits =====
     // stage = how far the visit got (single funnel selector): came|applied|denied|approved|sold
     const FUNNEL=[['came','Solo vino'],['applied','Aplicó'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
+    // origin = who brought the visit (closers tag this). Order: brought-by-others → self-generated → passive
+    const ORIGINS=[
+      ['cc','Call Center'],          // a setter booked it
+      ['closer2','Otro closer'],     // another closer brought it
+      ['own','Self-gen'],            // own prospecting
+      ['ref_self','Mi referido'],    // referral he worked (calling past clients)
+      ['ref_direct','Referido directo'], // referral walked in, no heads-up
+      ['walkin','Walk-in']           // cold, no appointment
+    ];
     function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',stage:null});renderVisits();}
     function removeVisit(i){visits.splice(i,1);renderVisits();}
     function setV(i,k,val){visits[i][k]=val;renderVisits();}
@@ -220,7 +229,7 @@
       host.innerHTML=visits.map((v,i)=>{
         const originRow=me.role==='closer'?`
           <div class="vrow"><span class="field-lbl">Origen</span><div class="pills">
-            ${[['own','Propia'],['walkin','Walk-in'],['cc','Call Center']].map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
+            ${ORIGINS.map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
           </div></div>`:'';
         return `<div class="visit">
           <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
