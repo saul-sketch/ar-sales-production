@@ -415,6 +415,7 @@
     }
 
     function render(){
+      destroyCharts();
       renderSidebar();
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
@@ -1119,9 +1120,12 @@
     const _charts={};
     function mountChart(id,opts){
       const el=document.getElementById(id);if(!el)return;
+      if(el.offsetWidth===0){return;} // skip detached/zero-width containers (avoids ApexCharts NaN)
       if(_charts[id]){try{_charts[id].destroy();}catch(e){}}
       el.innerHTML='';const c=new ApexCharts(el,opts);_charts[id]=c;c.render();
     }
+    // Destroy all live charts before swapping views (prevents orphaned-chart NaN errors)
+    function destroyCharts(){Object.keys(_charts).forEach(id=>{try{_charts[id].destroy();}catch(e){}delete _charts[id];});}
 
     function escapeAttr(s){return String(s??'').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
     function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
