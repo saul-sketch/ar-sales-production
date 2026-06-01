@@ -280,6 +280,8 @@
       validateOn=true;
       const errs=visitErrors();
       if(errs.length){
+        document.getElementById('cmp-card').classList.add('hidden');
+        document.getElementById('btn-submit').classList.add('hidden');
         renderVisits();
         const msg=document.getElementById('val-msg');
         msg.innerHTML=`⚠️ Completa <b>Origen, Fuente y Llegó a</b> en cada visita antes de avanzar (${errs.length} sin completar).`;
