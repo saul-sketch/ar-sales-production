@@ -287,18 +287,28 @@
         truth_calls:truth.calls, truth_contacts:truth.contacts, truth_appointments:truth.appointments,
         submitted_at:new Date().toISOString()
       };
+      // Always keep a full local backup (visit detail included)
+      try{localStorage.setItem('ar_kpi_'+todayISO(),JSON.stringify(payload));}catch(_){}
+      // 1) Try the dedicated table (full detail). 2) Fall back to the existing self-report (core numbers).
+      let saved=false;
       try{
         const res=await fetch(`${SUPA_URL}/rest/v1/ar_kpi_daily?on_conflict=agent_name,report_date`,{
           method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
           body:JSON.stringify(payload)
         });
-        if(!res.ok){const t=await res.text();throw new Error(t.slice(0,120));}
-        showDone();
-      }catch(e){
-        // fallback so the report is never lost
-        try{localStorage.setItem('ar_kpi_'+todayISO(),JSON.stringify(payload));}catch(_){}
-        showDone('Guardado. (Sincroniza al reconectar.)');
+        if(res.ok)saved=true;
+      }catch(_){}
+      if(!saved){
+        try{
+          const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied:payload.applied,approved:payload.approved,sold:payload.sold};
+          const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{
+            method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
+            body:JSON.stringify(core)
+          });
+          if(r2.ok)saved=true;
+        }catch(_){}
       }
+      showDone(saved?null:'Guardado en tu dispositivo. Se sincroniza al reconectar.');
     }
     function showDone(msg){
       document.getElementById('screen-app').style.display='none';
