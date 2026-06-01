@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Mi Reporte KPI — Auto Republic</title>
+  <style>
+    :root{
+      --primary:#0f172a;--accent:#e94560;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;
+      --blue:#3b82f6;--purple:#8b5cf6;--orange:#f97316;--cyan:#06b6d4;
+      --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;--gray-300:#cbd5e1;
+      --gray-400:#94a3b8;--gray-500:#64748b;--gray-600:#475569;--gray-700:#334155;
+      --gray-800:#1e293b;--gray-900:#0f172a;
+      --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+      --shadow-lg:0 10px 25px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--gray-50);color:var(--gray-900);-webkit-font-smoothing:antialiased;min-height:100vh;}
+    .wrap{max-width:560px;margin:0 auto;padding:0 0 60px;}
+    /* Gate */
+    .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+    .gate-card{background:white;border-radius:18px;padding:34px 28px;box-shadow:var(--shadow-lg);max-width:420px;text-align:center;}
+    .gate-card h1{font-size:21px;font-weight:800;margin-bottom:8px;}
+    .gate-card p{color:var(--gray-500);font-size:14px;line-height:1.5;margin-bottom:8px;}
+    .gate-mark{width:54px;height:54px;border-radius:14px;background:var(--primary);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;margin:0 auto 18px;}
+    /* Hero header */
+    .hero{background:linear-gradient(135deg,#0f172a,#1e293b);color:white;padding:22px 20px 24px;}
+    .hero .greet{font-size:13px;opacity:.7;font-weight:600;}
+    .hero .name{font-size:24px;font-weight:800;letter-spacing:-.3px;margin-top:2px;}
+    .hero .meta{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+    .role-badge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 9px;border-radius:999px;}
+    .role-badge.closer{background:#dbeafe;color:#1e40af;}.role-badge.setter{background:#d1fae5;color:#065f46;}
+    .hero .date{font-size:12px;opacity:.8;}
+    /* Cards */
+    .card{background:white;border-radius:16px;padding:18px;box-shadow:var(--shadow);margin:14px 14px 0;}
+    .card h2{font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px;}
+    .card .sub{font-size:12.5px;color:var(--gray-500);margin-top:4px;line-height:1.45;margin-bottom:14px;}
+    .step-num{width:24px;height:24px;border-radius:8px;background:var(--primary);color:white;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;}
+    /* Stat inputs */
+    .stat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--gray-100);}
+    .stat-row:last-child{border-bottom:none;}
+    .stat-row .lbl{font-size:14px;font-weight:600;}
+    .stat-row .lbl small{display:block;font-size:11px;color:var(--gray-400);font-weight:400;margin-top:1px;}
+    .num-input{width:84px;padding:11px;border:1.5px solid var(--gray-300);border-radius:11px;font-size:18px;font-weight:700;text-align:center;font-family:inherit;color:var(--gray-900);}
+    .num-input:focus{outline:none;border-color:var(--blue);}
+    /* Visit cards */
+    .visit{border:1.5px solid var(--gray-200);border-radius:13px;padding:14px;margin-bottom:12px;position:relative;background:var(--gray-50);}
+    .visit .vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+    .visit .vnum{font-size:12px;font-weight:800;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px;}
+    .visit .vremove{background:none;border:none;color:var(--red);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .txt-input{width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:10px;}
+    .txt-input:focus{outline:none;border-color:var(--blue);}
+    .field-lbl{font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:6px;display:block;}
+    .pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+    .pill{padding:8px 13px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;}
+    .pill.on{background:var(--primary);color:white;border-color:var(--primary);}
+    .pill.on.green{background:var(--green);border-color:var(--green);}
+    .pill.on.red{background:var(--red);border-color:var(--red);}
+    .pill.on.amber{background:var(--yellow);border-color:var(--yellow);}
+    .add-visit{width:100%;padding:13px;border:1.5px dashed var(--gray-300);border-radius:12px;background:white;color:var(--gray-600);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .add-visit:hover{border-color:var(--blue);color:var(--blue);}
+    /* Confirm + submit */
+    .btn-main{width:calc(100% - 28px);margin:18px 14px 0;padding:15px;background:var(--primary);color:white;border:none;border-radius:13px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;}
+    .btn-main:disabled{opacity:.5;}
+    .btn-main.green{background:var(--green);}
+    /* Comparison */
+    .cmp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--gray-100);}
+    .cmp-row:last-child{border-bottom:none;}
+    .cmp-row .cl{font-size:14px;font-weight:600;}
+    .cmp-vals{display:flex;align-items:center;gap:10px;font-size:13px;}
+    .cmp-vals .said{color:var(--gray-500);}
+    .cmp-vals .real{font-weight:800;}
+    .cmp-vals .diff{font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;}
+    .diff.ok{background:#d1fae5;color:#065f46;}.diff.off{background:#fee2e2;color:#991b1b;}
+    .pending-note{background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:12px 14px;font-size:12.5px;color:#92400e;margin-top:12px;line-height:1.45;}
+    .done{text-align:center;padding:40px 24px;}
+    .done .check{width:64px;height:64px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;}
+    .done h2{font-size:20px;font-weight:800;}.done p{color:var(--gray-500);margin-top:6px;}
+    .hidden{display:none;}
+  </style>
+</head>
+<body>
+  <!-- Gate -->
+  <div class="gate" id="screen-gate" style="display:none;">
+    <div class="gate-card">
+      <div class="gate-mark">AR</div>
+      <h1>Reporte KPI</h1>
+      <p>Esta página se abre <b>desde tu CRM (GoHighLevel)</b>. Tu sesión te identifica automáticamente.</p>
+      <p style="font-size:12px;color:var(--gray-400);margin-top:14px;">Entra desde el menú de Auto Republic dentro de GoHighLevel.</p>
+    </div>
+  </div>
+  <!-- Not setter/closer -->
+  <div class="gate" id="screen-norole" style="display:none;">
+    <div class="gate-card">
+      <div class="gate-mark">AR</div>
+      <h1 id="nr-name">—</h1>
+      <p>Solo los <b>setters</b> y <b>closers</b> llenan el reporte de KPIs.</p>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div id="screen-app" style="display:none;">
+    <div class="hero">
+      <div class="greet">Reporte de hoy</div>
+      <div class="name" id="h-name">—</div>
+      <div class="meta"><span class="role-badge" id="h-role">—</span><span class="date" id="h-date">—</span></div>
+    </div>
+    <div class="wrap">
+      <!-- Step 1: activity -->
+      <div class="card">
+        <h2><span class="step-num">1</span> Tu actividad</h2>
+        <div class="sub">Escribe lo que <b>crees</b> que hiciste hoy. Al confirmar te muestro lo real (no veas el número antes 😉).</div>
+        <div class="stat-row"><div class="lbl">📞 Llamadas hoy</div><input class="num-input" type="number" min="0" id="d-calls" placeholder="0"></div>
+        <div class="stat-row"><div class="lbl">💬 Contactos<small>conversaciones de +2 min</small></div><input class="num-input" type="number" min="0" id="d-contacts" placeholder="0"></div>
+        <div class="stat-row"><div class="lbl">📅 Citas agendadas</div><input class="num-input" type="number" min="0" id="d-appts" placeholder="0"></div>
+      </div>
+      <!-- Step 2: visits -->
+      <div class="card">
+        <h2><span class="step-num">2</span> Tus visitas</h2>
+        <div class="sub" id="visits-sub">Agrega cada visita que atendiste hoy.</div>
+        <div id="visits-list"></div>
+        <button class="add-visit" onclick="addVisit()">+ Agregar visita</button>
+      </div>
+      <button class="btn-main" id="btn-confirm" onclick="confirmReport()">Confirmar y comparar</button>
+
+      <!-- Comparison (hidden until confirm) -->
+      <div class="card hidden" id="cmp-card">
+        <h2>📊 Lo que dijiste vs lo real</h2>
+        <div class="sub">El número real es el que cuenta. Esto mide qué tan cerca estuviste.</div>
+        <div id="cmp-rows"></div>
+        <div class="pending-note" id="cmp-pending"></div>
+      </div>
+      <button class="btn-main green hidden" id="btn-submit" onclick="submitReport()">Enviar reporte ✓</button>
+    </div>
+  </div>
+
+  <!-- Done -->
+  <div id="screen-done" style="display:none;">
+    <div class="done">
+      <div class="check">✓</div>
+      <h2>¡Reporte enviado!</h2>
+      <p id="done-msg">Gracias. Tu producción de hoy quedó registrada.</p>
+    </div>
+  </div>
+
+  <script>
+    const SUPA_URL='https://xwxjutaqouaeocvxawlw.supabase.co';
+    const SUPA_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3eGp1dGFxb3VhZW9jdnhhd2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTIxMzYsImV4cCI6MjA5MjYyODEzNn0.TOigRbaNL5z3Q7hd4llJyqrC6vZwn_-1R-5JudXtJmU';
+    const SUPA_HEADERS={apikey:SUPA_ANON,Authorization:`Bearer ${SUPA_ANON}`,'Content-Type':'application/json'};
+    const PROXY_URL='https://xwxjutaqouaeocvxawlw.supabase.co/functions/v1/dialer-proxy';
+
+    let me={name:null,email:null,role:null};
+    let visits=[]; // {client, origin, applied, approvedGuess, soldGuess}
+    let truth={calls:null,contacts:null,appointments:null,showed:null};
+
+    document.addEventListener('DOMContentLoaded',async()=>{
+      const ident=resolveIdentity();
+      if(!ident){document.getElementById('screen-gate').style.display='flex';return;}
+      me=ident;
+      await loadRole();
+      if(me.role!=='closer'&&me.role!=='setter'){
+        document.getElementById('nr-name').textContent='Hola, '+me.name;
+        document.getElementById('screen-norole').style.display='flex';return;
+      }
+      document.getElementById('screen-app').style.display='';
+      document.getElementById('h-name').textContent=me.name;
+      const rb=document.getElementById('h-role');rb.textContent=me.role==='closer'?'Closer':'Setter';rb.className='role-badge '+me.role;
+      document.getElementById('h-date').textContent=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+      document.getElementById('visits-sub').textContent=me.role==='closer'?'Agrega cada visita que atendiste hoy (marca de dónde vino).':'Agrega cada visita que trajiste hoy y hasta dónde llegó.';
+      addVisit();
+      loadTruth(); // background — fetch real calls/contacts/citas for the comparison
+    });
+
+    function resolveIdentity(){
+      const q=new URLSearchParams(location.search);
+      const name=(q.get('name')||q.get('user')||'').trim();
+      const email=(q.get('email')||'').trim();
+      const dev=(q.get('dev')||'').trim();
+      const finalName=name||dev;
+      if(!finalName)return null;
+      return {name:finalName,email,role:null};
+    }
+
+    async function loadRole(){
+      try{
+        const r=await fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role`,{headers:SUPA_HEADERS});
+        const agents=await r.json();
+        const a=agents.find(x=>x.name&&x.name.toLowerCase()===me.name.toLowerCase());
+        me.role=a?a.role:null;
+      }catch(e){me.role=null;}
+    }
+
+    function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+    async function loadTruth(){
+      // Real numbers for TODAY from the dialer feed + calendar (used only at comparison time)
+      try{
+        const t=todayISO();
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        const data=await res.json();
+        const row=(data.agents||[]).find(a=>(a.agentName||'').toLowerCase()===me.name.toLowerCase());
+        if(row){truth.calls=row.calls||0;truth.contacts=row.contacts!=null?row.contacts:null;truth.appointments=row.appointments||0;}
+        else{truth.calls=0;truth.appointments=0;}
+      }catch(e){/* leave nulls — comparison will show "—" */}
+    }
+
+    // ===== Visits =====
+    function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',applied:null,approvedGuess:null,soldGuess:null});renderVisits();}
+    function removeVisit(i){visits.splice(i,1);renderVisits();}
+    function setV(i,k,val){visits[i][k]=val;renderVisits();}
+
+    function renderVisits(){
+      const host=document.getElementById('visits-list');
+      host.innerHTML=visits.map((v,i)=>{
+        const originBlock=me.role==='closer'?`
+          <span class="field-lbl">¿De dónde vino?</span>
+          <div class="pills">
+            ${[['own','Propia'],['walkin','Walk-in'],['cc','Call Center']].map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
+          </div>`:'';
+        return `<div class="visit">
+          <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕ quitar</button>`:''}</div>
+          <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
+          ${originBlock}
+          <span class="field-lbl">¿Aplicó a crédito?</span>
+          <div class="pills">
+            <button class="pill ${v.applied===true?'on green':''}" onclick="setV(${i},'applied',true)">Sí</button>
+            <button class="pill ${v.applied===false?'on red':''}" onclick="setV(${i},'applied',false)">No</button>
+          </div>
+          <span class="field-lbl">¿Crees que aprobó?</span>
+          <div class="pills">
+            <button class="pill ${v.approvedGuess==='approved'?'on green':''}" onclick="setV(${i},'approvedGuess','approved')">Aprobó</button>
+            <button class="pill ${v.approvedGuess==='denied'?'on red':''}" onclick="setV(${i},'approvedGuess','denied')">Negó</button>
+            <button class="pill ${v.approvedGuess==='pending'?'on amber':''}" onclick="setV(${i},'approvedGuess','pending')">Pendiente</button>
+          </div>
+          <span class="field-lbl">¿Crees que se vendió?</span>
+          <div class="pills">
+            <button class="pill ${v.soldGuess===true?'on green':''}" onclick="setV(${i},'soldGuess',true)">Sí</button>
+            <button class="pill ${v.soldGuess===false?'on red':''}" onclick="setV(${i},'soldGuess',false)">No</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // ===== Confirm → comparison =====
+    function val(id){const el=document.getElementById(id);return el&&el.value!==''?parseInt(el.value):null;}
+    function confirmReport(){
+      const declared={calls:val('d-calls'),contacts:val('d-contacts'),appointments:val('d-appts')};
+      const realVisits=visits.filter(v=>(v.client||'').trim()).length;
+      const rows=[
+        cmpRow('📞 Llamadas',declared.calls,truth.calls),
+        cmpRow('💬 Contactos +2min',declared.contacts,truth.contacts),
+        cmpRow('📅 Citas agendadas',declared.appointments,truth.appointments),
+        cmpRow('🚶 Visitas registradas',realVisits,truth.showed)
+      ].join('');
+      document.getElementById('cmp-rows').innerHTML=rows;
+      document.getElementById('cmp-pending').innerHTML='⏳ Las <b>aprobadas, negadas y ventas</b> las confirma el manager al final del día. Ahí se compara con lo que marcaste.';
+      document.getElementById('cmp-card').classList.remove('hidden');
+      document.getElementById('btn-submit').classList.remove('hidden');
+      document.getElementById('btn-confirm').textContent='Volver a comparar';
+      document.getElementById('cmp-card').scrollIntoView({behavior:'smooth'});
+    }
+    function cmpRow(label,said,real){
+      if(real==null){
+        return `<div class="cmp-row"><div class="cl">${label}</div><div class="cmp-vals"><span class="said">dijiste ${said==null?'—':said}</span><span class="diff">real: no disponible</span></div></div>`;
+      }
+      const s=said==null?0:said, diff=s-real;
+      const cls=diff===0?'ok':'off';
+      const dtxt=diff===0?'✓ igual':(diff>0?`+${diff} de más`:`${diff} de menos`);
+      return `<div class="cmp-row"><div class="cl">${label}</div><div class="cmp-vals"><span class="said">dijiste ${said==null?'—':said}</span><span class="real">real ${real}</span><span class="diff ${cls}">${dtxt}</span></div></div>`;
+    }
+
+    // ===== Submit =====
+    async function submitReport(){
+      const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Enviando…';
+      const cleanVisits=visits.filter(v=>(v.client||'').trim());
+      const applied=cleanVisits.filter(v=>v.applied===true).length;
+      const approved=cleanVisits.filter(v=>v.approvedGuess==='approved').length;
+      const denied=cleanVisits.filter(v=>v.approvedGuess==='denied').length;
+      const sold=cleanVisits.filter(v=>v.soldGuess===true).length;
+      const payload={
+        agent_name:me.name, role:me.role, report_date:todayISO(),
+        calls:val('d-calls'), contacts:val('d-contacts'), appointments:val('d-appts'),
+        visits:cleanVisits.length, applied, approved, denied, sold,
+        visits_detail:cleanVisits,
+        truth_calls:truth.calls, truth_contacts:truth.contacts, truth_appointments:truth.appointments,
+        submitted_at:new Date().toISOString()
+      };
+      try{
+        const res=await fetch(`${SUPA_URL}/rest/v1/ar_kpi_daily?on_conflict=agent_name,report_date`,{
+          method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
+          body:JSON.stringify(payload)
+        });
+        if(!res.ok){const t=await res.text();throw new Error(t.slice(0,120));}
+        showDone();
+      }catch(e){
+        // fallback so the report is never lost
+        try{localStorage.setItem('ar_kpi_'+todayISO(),JSON.stringify(payload));}catch(_){}
+        showDone('Guardado. (Sincroniza al reconectar.)');
+      }
+    }
+    function showDone(msg){
+      document.getElementById('screen-app').style.display='none';
+      if(msg)document.getElementById('done-msg').textContent=msg;
+      document.getElementById('screen-done').style.display='';
+      window.scrollTo(0,0);
+    }
+  </script>
+</body>
+</html>
