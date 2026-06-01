@@ -55,8 +55,9 @@
     .vrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
     .vrow:last-child{margin-bottom:0;}
     .field-lbl{font-size:10.5px;font-weight:800;color:var(--gray-500);width:52px;flex-shrink:0;text-transform:uppercase;letter-spacing:.3px;}
-    .pills{display:flex;gap:5px;flex-wrap:wrap;flex:1;}
-    .pill{padding:6px 11px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;}
+    .pills{display:flex;gap:5px;flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    .pills::-webkit-scrollbar{display:none;}
+    .pill{padding:6px 11px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;white-space:nowrap;flex-shrink:0;}
     .pill.on{background:var(--primary);color:white;border-color:var(--primary);}
     .pill.on.green{background:var(--green);border-color:var(--green);}
     .pill.on.red{background:var(--red);border-color:var(--red);}
@@ -217,11 +218,11 @@
       ['cc','Call Center'],            // a setter booked it
       ['closer2','Otro closer'],       // another closer brought it
       ['own','Self-gen'],              // he generated it → needs a source below
-      ['ref_direct','Referido directo'], // a referral walked in, no heads-up (not worked by him)
+      ['ref_direct','Ref. directo'],   // a referral walked in, no heads-up (not worked by him)
       ['walkin','Walk-in']             // cold, no appointment
     ];
     // When origin = Self-gen, where did the lead come from
-    const SELFGEN_SOURCES=[['marketplace','Marketplace'],['fb_ads','Facebook Ads'],['crm','CRM recuperado'],['referido','Referido']];
+    const SELFGEN_SOURCES=[['marketplace','Marketplace'],['fb_ads','FB Ads'],['crm','CRM recup.'],['referido','Referido']];
     function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',source:null,stage:null});renderVisits();}
     function removeVisit(i){visits.splice(i,1);renderVisits();}
     function setV(i,k,val){visits[i][k]=val;if(k==='origin'&&val!=='own')visits[i].source=null;renderVisits();}
