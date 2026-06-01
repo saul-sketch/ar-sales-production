@@ -63,6 +63,9 @@
     .vsel.good{color:var(--green);border-color:var(--green);background-color:#f0fdf4;}
     .vsel.bad{color:var(--red);border-color:var(--red);background-color:#fef2f2;}
     .vsel.set{border-color:var(--gray-400);}
+    .txt-input.err,.vsel.err{border-color:var(--red)!important;background-color:#fef2f2;}
+    .val-msg{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin:12px 14px 0;display:none;}
+    .val-msg.show{display:block;}
     .pill.on{background:var(--primary);color:white;border-color:var(--primary);}
     .pill.on.green{background:var(--green);border-color:var(--green);}
     .pill.on.red{background:var(--red);border-color:var(--red);}
@@ -132,6 +135,7 @@
         <div id="visits-list"></div>
         <button class="add-visit" onclick="addVisit()">+ Agregar visita</button>
       </div>
+      <div class="val-msg" id="val-msg"></div>
       <button class="btn-main" id="btn-confirm" onclick="confirmReport()">Confirmar y comparar</button>
 
       <!-- Comparison (hidden until confirm) -->
@@ -161,8 +165,26 @@
     const PROXY_URL='https://xwxjutaqouaeocvxawlw.supabase.co/functions/v1/dialer-proxy';
 
     let me={name:null,email:null,role:null};
-    let visits=[]; // {client, origin, applied, approvedGuess, soldGuess}
+    let visits=[]; // {client, origin, source, stage}
     let truth={calls:null,contacts:null,appointments:null,showed:null};
+    let validateOn=false; // once a confirm is attempted, show missing-field errors live
+
+    // A visit "counts" once it has any data. A counted visit REQUIRES: cliente, origen (closer),
+    // fuente (if self-gen), and llegó-a. Returns the list of incomplete visits.
+    function visitErrors(){
+      const errs=[];
+      visits.forEach((v,i)=>{
+        const started=(v.client||'').trim()||v.stage||v.source||(me.role==='closer'&&v.origin);
+        if(!started)return;
+        const missing=[];
+        if(!(v.client||'').trim())missing.push('cliente');
+        if(me.role==='closer'&&!v.origin)missing.push('origen');
+        if(me.role==='closer'&&v.origin==='own'&&!v.source)missing.push('fuente');
+        if(!v.stage)missing.push('llegó a');
+        if(missing.length)errs.push({i,missing});
+      });
+      return errs;
+    }
 
     document.addEventListener('DOMContentLoaded',async()=>{
       const ident=resolveIdentity();
@@ -235,22 +257,38 @@
     function renderVisits(){
       const host=document.getElementById('visits-list');
       host.innerHTML=visits.map((v,i)=>{
-        const sel=(field,opts,ph)=>`<select class="vsel ${v[field]?'set':''}" onchange="setV(${i},'${field}',this.value)"><option value="">${ph}</option>${opts.map(([k,l])=>`<option value="${k}" ${v[field]===k?'selected':''}>${l}</option>`).join('')}</select>`;
-        const originRow=me.role==='closer'?`<div class="vrow"><span class="field-lbl">Origen</span>${sel('origin',ORIGINS,'— elegir —')}</div>`:'';
-        const sourceRow=(me.role==='closer'&&v.origin==='own')?`<div class="vrow"><span class="field-lbl">Fuente</span>${sel('source',SELFGEN_SOURCES,'— fuente —')}</div>`:'';
+        const started=(v.client||'').trim()||v.stage||v.source||(me.role==='closer'&&v.origin);
+        const e=cond=>validateOn&&started&&cond?' err':'';
+        const sel=(field,opts,ph,bad)=>`<select class="vsel ${v[field]?'set':''}${bad}" onchange="setV(${i},'${field}',this.value)"><option value="">${ph}</option>${opts.map(([k,l])=>`<option value="${k}" ${v[field]===k?'selected':''}>${l}</option>`).join('')}</select>`;
+        const originRow=me.role==='closer'?`<div class="vrow"><span class="field-lbl">Origen</span>${sel('origin',ORIGINS,'— elegir —',e(!v.origin))}</div>`:'';
+        const sourceRow=(me.role==='closer'&&v.origin==='own')?`<div class="vrow"><span class="field-lbl">Fuente</span>${sel('source',SELFGEN_SOURCES,'— fuente —',e(!v.source))}</div>`:'';
         const stageCls=(v.stage==='sold'||v.stage==='approved')?'good':(v.stage==='denied'?'bad':(v.stage?'set':''));
-        const stageRow=`<div class="vrow"><span class="field-lbl">Llegó a</span><select class="vsel ${stageCls}" onchange="setV(${i},'stage',this.value)"><option value="">— elegir —</option>${FUNNEL.map(([k,l])=>`<option value="${k}" ${v.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>`;
+        const stageRow=`<div class="vrow"><span class="field-lbl">Llegó a</span><select class="vsel ${stageCls}${e(!v.stage)}" onchange="setV(${i},'stage',this.value)"><option value="">— elegir —</option>${FUNNEL.map(([k,l])=>`<option value="${k}" ${v.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>`;
         return `<div class="visit">
           <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
-          <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
+          <input class="txt-input${e(!(v.client||'').trim())}" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
           ${originRow}${sourceRow}${stageRow}
         </div>`;
       }).join('');
+      if(validateOn&&!visitErrors().length){const m=document.getElementById('val-msg');if(m)m.classList.remove('show');}
     }
 
     // ===== Confirm → comparison =====
     function val(id){const el=document.getElementById(id);return el&&el.value!==''?parseInt(el.value):null;}
     function confirmReport(){
+      // Mandatory: Origen, Fuente (if self-gen) and Llegó a on every started visit
+      validateOn=true;
+      const errs=visitErrors();
+      if(errs.length){
+        renderVisits();
+        const msg=document.getElementById('val-msg');
+        msg.innerHTML=`⚠️ Completa <b>Origen, Fuente y Llegó a</b> en cada visita antes de avanzar (${errs.length} sin completar).`;
+        msg.classList.add('show');
+        const first=document.querySelector('.txt-input.err, .vsel.err');
+        if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+        return;
+      }
+      document.getElementById('val-msg').classList.remove('show');
       const declared={calls:val('d-calls'),contacts:val('d-contacts'),appointments:val('d-appts')};
       const realVisits=visits.filter(v=>(v.client||'').trim()).length;
       const rows=[
@@ -278,6 +316,7 @@
 
     // ===== Submit =====
     async function submitReport(){
+      if(visitErrors().length){confirmReport();return;}
       const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Enviando…';
       const cleanVisits=visits.filter(v=>(v.client||'').trim());
       // derive funnel counts from each visit's single stage
