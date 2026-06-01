@@ -159,6 +159,16 @@
     .tip:hover .tip-box,.tip.show .tip-box{display:block;}
     .tip-box{display:none;position:absolute;bottom:135%;left:50%;transform:translateX(-50%);background:var(--gray-900);color:white;font-size:11px;font-weight:500;line-height:1.45;padding:9px 11px;border-radius:8px;width:210px;z-index:60;text-align:left;text-transform:none;letter-spacing:normal;box-shadow:var(--shadow-lg);}
     .tip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--gray-900);}
+    /* Top period bar (custom ranges) */
+    .period-bar{background:white;border-bottom:1px solid var(--gray-200);padding:9px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+    .pb-quick{display:inline-flex;gap:5px;flex-wrap:wrap;}
+    .pb-chip{padding:6px 12px;font-size:13px;font-weight:700;border-radius:8px;cursor:pointer;color:var(--gray-600);border:1px solid var(--gray-200);background:white;font-family:inherit;}
+    .pb-chip.active{background:var(--primary);color:white;border-color:var(--primary);}
+    .pb-range{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--gray-500);}
+    .pb-range input{padding:5px 8px;border:1px solid var(--gray-200);border-radius:7px;font-family:inherit;font-size:12px;color:var(--gray-700);}
+    .pb-go{padding:6px 13px;background:var(--gray-800);color:white;border:none;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
+    .pb-now{margin-left:auto;font-size:12px;color:var(--gray-500);font-weight:700;}
+    @media(max-width:640px){.period-bar{padding:8px 12px;gap:8px;}.pb-now{margin-left:0;width:100%;}}
     .back-btn{display:inline-flex;align-items:center;gap:6px;background:var(--gray-100);border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:700;color:var(--gray-700);cursor:pointer;font-family:inherit;margin-bottom:14px;}
     .back-btn:hover{background:var(--gray-200);}
     .page-title{font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:3px;}
@@ -196,6 +206,7 @@
         <div class="user-chip"><span id="user-name">—</span><span class="role-badge" id="user-role">—</span></div>
       </div>
     </div>
+    <div class="period-bar" id="period-bar"></div>
     <div class="shell">
       <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
       <aside class="sidebar" id="sidebar"></aside>
@@ -218,16 +229,39 @@
     let view='global';          // global | setters | closers | recon | profile
     let profileCtx=null;        // {name, facet}
     let teamFilter='';
+    let monthsExpanded=false;   // sidebar month list collapsed by default
     const MONTHS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
     // ===== Navigation / router =====
     let prevView='global';
     function navigate(v,ctx){if(v==='profile'&&view!=='profile')prevView=view;view=v;if(v==='profile'&&ctx)profileCtx=ctx;closeSidebar();render();window.scrollTo(0,0);}
     function goProfile(name,facet){navigate('profile',{name,facet});}
-    async function setPeriod(p){filterPeriod=p;renderSidebar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
+    async function setPeriod(p){filterPeriod=p;renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
     function setLoc(l){filterLoc=l;render();}
     function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
+    // Top period bar: quick day-ranges + custom from/to
+    function renderPeriodBar(){
+      const bar=document.getElementById('period-bar');if(!bar)return;
+      const quick=[{p:'last:1',lbl:'Hoy'},{p:'last:3',lbl:'3 días'},{p:'last:7',lbl:'7 días'},{p:'last:14',lbl:'14 días'},{p:'30',lbl:'30 días'}];
+      const chips=quick.map(q=>`<button class="pb-chip ${filterPeriod===q.p?'active':''}" onclick="setPeriod('${q.p}')">${q.lbl}</button>`).join('');
+      const isRange=filterPeriod.startsWith('range:');const rp=isRange?filterPeriod.split(':'):['','',''];
+      bar.innerHTML=`
+        <span class="filter-label">Periodo</span>
+        <div class="pb-quick">${chips}</div>
+        <div class="pb-range"><span>rango propio:</span>
+          <input type="date" id="pb-from" value="${rp[1]||''}">
+          <span>→</span>
+          <input type="date" id="pb-to" value="${rp[2]||''}">
+          <button class="pb-go" onclick="applyRange()">Ver</button>
+        </div>
+        <span class="pb-now">📅 ${periodLabel()}</span>`;
+    }
+    function applyRange(){
+      const f=document.getElementById('pb-from').value,t=document.getElementById('pb-to').value;
+      if(f&&t)setPeriod(f<=t?('range:'+f+':'+t):('range:'+t+':'+f));
+      else if(f)setPeriod('range:'+f+':'+f);
+    }
 
     document.addEventListener('DOMContentLoaded',async()=>{
       const ident=resolveIdentity();
@@ -269,6 +303,8 @@
         from=`${filterPeriod}-01`;
         toOut=`${filterPeriod}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
       }
+      else if(filterPeriod.startsWith('last:')){const n=+filterPeriod.slice(5);const c=new Date();c.setDate(c.getDate()-(n-1));from=iso(c);}
+      else if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');from=p[1];toOut=p[2];}
       else if(filterPeriod==='mtd')from=iso(new Date(now.getFullYear(),now.getMonth(),1));
       else if(filterPeriod==='30'){const c=new Date();c.setDate(c.getDate()-30);from=iso(c);}
       else if(filterPeriod==='qtd'){const q=Math.floor(now.getMonth()/3);from=iso(new Date(now.getFullYear(),q*3,1));}
@@ -354,6 +390,8 @@
     function inPeriod(d){
       if(filterPeriod==='all')return true;
       if(/^\d{4}-\d{2}$/.test(filterPeriod))return String(d).slice(0,7)===filterPeriod; // specific month
+      if(filterPeriod.startsWith('last:')){const n=+filterPeriod.slice(5);const c=new Date();c.setHours(0,0,0,0);c.setDate(c.getDate()-(n-1));return new Date(d+'T00:00:00')>=c;}
+      if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');return d>=p[1]&&d<=p[2];}
       const dt=new Date(d+'T00:00:00'),now=new Date();
       if(filterPeriod==='mtd')return dt.getFullYear()===now.getFullYear()&&dt.getMonth()===now.getMonth();
       if(filterPeriod==='30'){const c=new Date();c.setDate(c.getDate()-30);return dt>=c;}
@@ -367,6 +405,27 @@
       (window._recon||[]).forEach(r=>{if(r.recon_date)set.add(String(r.recon_date).slice(0,7));});
       return [...set].filter(m=>/^\d{4}-\d{2}$/.test(m)).sort().reverse();
     }
+    // Distinct days WITH activity in the period (reports or dialer calls). Used so
+    // call/appt counts can be shown as a daily AVERAGE, not just an inflated period total.
+    function activeDaysInPeriod(){
+      const days=new Set();
+      (allReports||[]).forEach(r=>{if(r.date&&inPeriod(r.date))days.add(r.date);});
+      (window._recon||[]).forEach(r=>{if(r.recon_date&&inPeriod(r.recon_date)){
+        const bas=(r.detail||{}).by_agent_status||{};
+        if(Object.values(bas).some(v=>(v.calls||0)>0))days.add(r.recon_date);
+      }});
+      return days.size||1;
+    }
+    // Per-agent active days (days that specific person had calls) — for their own daily average.
+    function agentActiveDays(name){
+      const k=(name||'').toLowerCase();const days=new Set();
+      (window._recon||[]).forEach(r=>{if(r.recon_date&&inPeriod(r.recon_date)){
+        const d=((r.detail||{}).by_agent_status||{})[k];
+        if(d&&((d.calls||0)>0||(d.total||0)>0))days.add(r.recon_date);
+      }});
+      return days.size||1;
+    }
+    function perDay(total,days){return days>0?Math.round(total/days):0;}
     function clean(s){if(!s)return null;const t=String(s).trim();return ['','n/a','na','—','-'].includes(t.toLowerCase())?null:t;}
     function fmtShare(x){return Number.isInteger(x)?String(x):x.toFixed(1);}
     function fmtMoney(n){return '$'+Math.round(n||0).toLocaleString('en-US');}
@@ -417,6 +476,7 @@
     function render(){
       destroyCharts();
       renderSidebar();
+      renderPeriodBar();
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
       if(view==='setters'){renderRoleView(s,'setter');return;}
@@ -452,10 +512,12 @@
         return `<button class="nav-item ${active?'active':''}" onclick="${click}"><span class="ico">${n.ico}</span>${n.lbl}</button>`;
       }).join('');
       const months=availableMonths();
-      const periods=[{p:'30',lbl:'Últimos 30 días'},{p:'mtd',lbl:'Mes actual'},
-        ...months.map(m=>{const[y,mm]=m.split('-');return {p:m,lbl:`${MONTHS[+mm-1]} ${y}`};}),
-        {p:'qtd',lbl:'Trimestre'},{p:'all',lbl:'Todo el tiempo'}];
-      const perHtml=periods.map(x=>`<button class="period-item ${filterPeriod===x.p?'active':''}" onclick="setPeriod('${x.p}')">${x.lbl}</button>`).join('');
+      const quickP=[{p:'30',lbl:'Últimos 30 días'},{p:'mtd',lbl:'Mes actual'},{p:'qtd',lbl:'Trimestre'},{p:'all',lbl:'Todo el tiempo'}];
+      const quickHtml=quickP.map(x=>`<button class="period-item ${filterPeriod===x.p?'active':''}" onclick="setPeriod('${x.p}')">${x.lbl}</button>`).join('');
+      const showMonths=monthsExpanded||/^\d{4}-\d{2}$/.test(filterPeriod);
+      const monthsHtml=`<button class="period-item" style="font-weight:800;display:flex;justify-content:space-between;align-items:center;" onclick="monthsExpanded=!monthsExpanded;renderSidebar();"><span>📅 Por mes</span><span style="color:var(--gray-400);">${showMonths?'▾':'▸'}</span></button>
+        ${showMonths?months.map(m=>{const[y,mm]=m.split('-');return `<button class="period-item ${filterPeriod===m?'active':''}" style="padding-left:24px;" onclick="setPeriod('${m}')">${MONTHS[+mm-1]} ${y}</button>`;}).join(''):''}`;
+      const perHtml=quickHtml+monthsHtml;
       let locHtml='';
       if(isMgr)locHtml=`<div class="side-section"><div class="side-title">Locación</div>
         ${[['all','Ambas'],['Orlando','Orlando'],['Kissimmee','Kissimmee']].map(([v,l])=>`<button class="period-item ${filterLoc===v?'active':''}" onclick="setLoc('${v}')">${l}</button>`).join('')}</div>`;
@@ -475,21 +537,23 @@
     }
 
     // ===== Global (manager dashboard) =====
-    function kpiCard(ico,lbl,val,color){return `<div class="avg-card"><div class="v" style="color:${color||'var(--gray-900)'};">${val}</div><div class="k">${ico} ${lbl}</div></div>`;}
+    function kpiCard(ico,lbl,val,color,sub){return `<div class="avg-card"><div class="v" style="color:${color||'var(--gray-900)'};">${val}</div><div class="k">${ico} ${lbl}</div>${sub?`<div style="font-size:10px;color:var(--gray-400);margin-top:3px;">${sub}</div>`:''}</div>`;}
     function teamTotals(s){
       let visits=0,applied=0,approved=0,sold=0,profit=0;
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{visits++;if(v.applied===true)applied++;if(v.result==='approved')approved++;if(v.sale===true){sold++;profit+=v.net_profit||0;}}));
       let calls=0,appts=0;Object.values(window._dialerByAgent||{}).forEach(d=>{calls+=d.calls||0;appts+=d.appointments||0;});
       return {visits,applied,approved,sold,profit,calls,appts};
     }
-    function globalFunnel(t){
-      const stages=[{name:'Llamadas',val:t.calls,color:'#0ea5e9'},{name:'Citas',val:t.appts,color:'#6366f1',conv:pct(t.visits,t.appts),convLbl:'show'},
-        {name:'Visitas',val:t.visits,color:'#3b82f6'},{name:'Aplicaron',val:t.applied,color:'#06b6d4',conv:pct(t.applied,t.visits)},
-        {name:'Aprobados',val:t.approved,color:'#8b5cf6',conv:pct(t.approved,t.applied)},{name:'Ventas',val:t.sold,color:'#10b981',conv:pct(t.sold,t.approved)}];
-      const max=Math.max(t.calls,t.visits,1);
-      return `<div class="section-card"><h3>Embudo del equipo</h3><p class="section-sub">De llamada a venta — todo el equipo junto</p>
-        ${stages.map(st=>{const w=Math.max(pct(st.val,max),3);return `<div class="funnel-stage"><div class="name">${st.name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${st.conv!==undefined?(st.convLbl?st.convLbl+' ':'↓')+st.conv.toFixed(0)+'%':''}</div></div>`;}).join('')}
-        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200);font-size:13px;color:var(--gray-600);">Monto total: <b style="color:var(--green);">${fmtMoney(t.profit)}</b></div></div>`;
+    function globalFunnel(t,days){
+      const d=v=>days>0?v/days:0;
+      const fmtAvg=v=>v>=10?Math.round(v).toLocaleString('en-US'):v.toFixed(1);
+      const stages=[{name:'Llamadas',val:d(t.calls),color:'#0ea5e9'},{name:'Citas',val:d(t.appts),color:'#6366f1',conv:pct(t.visits,t.appts),convLbl:'show'},
+        {name:'Visitas',val:d(t.visits),color:'#3b82f6'},{name:'Aplicaron',val:d(t.applied),color:'#06b6d4',conv:pct(t.applied,t.visits)},
+        {name:'Aprobados',val:d(t.approved),color:'#8b5cf6',conv:pct(t.approved,t.applied)},{name:'Ventas',val:d(t.sold),color:'#10b981',conv:pct(t.sold,t.approved)}];
+      const max=Math.max(d(t.calls),d(t.visits),1);
+      return `<div class="section-card"><h3>Embudo — promedio por día</h3><p class="section-sub">Cómo se ve un día típico del equipo · ${days} días con actividad en el período</p>
+        ${stages.map(st=>{const w=Math.max(pct(st.val,max),3);return `<div class="funnel-stage"><div class="name">${st.name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtAvg(st.val)}</div></div><div class="conv">${st.conv!==undefined?(st.convLbl?st.convLbl+' ':'↓')+st.conv.toFixed(0)+'%':''}</div></div>`;}).join('')}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200);font-size:13px;color:var(--gray-600);">Total del período: <b>${fmtShare(t.sold)} ventas</b> · <b style="color:var(--green);">${fmtMoney(t.profit)}</b></div></div>`;
     }
     function miniLeaderboard(title,rows,facet){
       if(!rows.length)return `<div class="section-card"><h3>${title}</h3><div class="empty">Sin datos</div></div>`;
@@ -508,16 +572,17 @@
       const rec=(window._recon||[]).filter(r=>inPeriod(r.recon_date));
       const recShow=rec.reduce((a,r)=>a+(r.showed_count||0),0),recMatch=rec.reduce((a,r)=>a+(r.matched||0),0),recCalOnly=rec.reduce((a,r)=>a+(r.calendar_only||0),0);
       const recMr=recShow>0?(recMatch/recShow*100):0;
+      const days=activeDaysInPeriod();
       let html=`<div class="page-title">Visión global</div>
-        <div class="page-sub">Todo el equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''}</div>
+        <div class="page-sub">Todo el equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · ${days} días con actividad</div>
         <div class="kpi-row">
-          ${kpiCard('📞','Llamadas',t.calls.toLocaleString('en-US'),'#0ea5e9')}
-          ${kpiCard('📅','Citas',t.appts,'#6366f1')}
-          ${kpiCard('🚶','Visitas',t.visits,'#3b82f6')}
+          ${kpiCard('📞','Llamadas/día',perDay(t.calls,days).toLocaleString('en-US'),'#0ea5e9',t.calls.toLocaleString('en-US')+' en total')}
+          ${kpiCard('📅','Citas/día',perDay(t.appts,days),'#6366f1',t.appts+' en total')}
+          ${kpiCard('🚶','Visitas',t.visits,'#3b82f6',perDay(t.visits,days)+'/día')}
           ${kpiCard('✅','Aprobados',t.approved,'#8b5cf6')}
-          ${kpiCard('🏆','Ventas',fmtShare(t.sold),'#10b981')}
+          ${kpiCard('🏆','Ventas',fmtShare(t.sold),'#10b981',(days?(t.sold/days).toFixed(1):0)+'/día')}
           ${kpiCard('💵','Monto',fmtMoney(t.profit),'#059669')}
-        </div>${globalFunnel(t)}
+        </div>${globalFunnel(t,days)}
         ${miniLeaderboard('Top closers',topClosers,'close')}
         ${miniLeaderboard('Top setters',topSetters,'prospect')}
         <div class="section-card" style="border:1.5px solid #bfdbfe;">
@@ -598,6 +663,8 @@
 
     function periodLabel(){
       if(/^\d{4}-\d{2}$/.test(filterPeriod)){const[y,m]=filterPeriod.split('-');return `${MONTHS[+m-1]} ${y}`;}
+      if(filterPeriod.startsWith('last:'))return `Últimos ${filterPeriod.slice(5)} días`;
+      if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');return `${p[1]} a ${p[2]}`;}
       return {mtd:'Mes actual',30:'Últimos 30 días',qtd:'Este trimestre',all:'Todo el tiempo'}[filterPeriod]||filterPeriod;
     }
 
@@ -737,13 +804,14 @@
       const isClose=kind==='close';
       const tag=isClose?'<span class="tag close">cierre</span>':'<span class="tag prospect">prospección</span>';
       const dl=dialerFor(agentName||(o.name));
+      const aDays=agentActiveDays(agentName||(o.name));
       // Top-of-funnel (dialer) only makes sense on prospección or a closer's own prospecting.
       // On the CLOSE funnel we don't show calls (those belong to prospecting); show appointments as context only.
       const showTop=kind==='prospect';
       const stages=[
         ...(showTop?[
-          {name:'Llamadas',val:dl.calls,color:'#0ea5e9',isDialer:true},
-          {name:'Citas agendadas',val:dl.appointments,conv:pct(o.visits,dl.appointments),color:'#6366f1',isDialer:true,convLbl:'show rate'},
+          {name:'Llamadas',val:dl.calls,color:'#0ea5e9',isDialer:true,note:perDay(dl.calls,aDays)+'/día'},
+          {name:'Citas agendadas',val:dl.appointments,conv:pct(o.visits,dl.appointments),color:'#6366f1',isDialer:true,convLbl:'show rate',note:perDay(dl.appointments,aDays)+'/día'},
         ]:[]),
         {name:isClose?'Visitas atendidas':'Visitas',val:o.visits,color:'#3b82f6'},
         {name:'Aplicaron',val:o.applied,conv:pct(o.applied,o.visits),color:'#06b6d4'},
@@ -753,11 +821,12 @@
       const max=Math.max(showTop?dl.calls:o.visits,o.visits,1);
       return `<div class="section-card">
         <h3>${title}${tag}</h3>
-        <p class="section-sub">${sub}${showTop?' · llamadas y citas en vivo del dialer':''}</p>
+        <p class="section-sub">${sub}${showTop?` · llamadas y citas en vivo del dialer · ${aDays} días activos`:''}</p>
         ${stages.map(st=>{
           const w=Math.max(pct(st.val,max),4);
           const convTxt=st.conv!==undefined?(st.convLbl?st.convLbl+' '+st.conv.toFixed(0)+'%':'↓'+st.conv.toFixed(0)+'%'):'';
-          return `<div class="funnel-stage"><div class="name">${st.name}${st.isDialer?' <span style="font-size:9px;color:#0ea5e9;font-weight:700;">●</span>':''}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${convTxt}</div></div>`;
+          const noteTxt=st.note?`<div style="font-size:10px;color:#0ea5e9;font-weight:700;">${st.note}</div>`:'';
+          return `<div class="funnel-stage"><div class="name">${st.name}${st.isDialer?' <span style="font-size:9px;color:#0ea5e9;font-weight:700;">●</span>':''}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${noteTxt}${convTxt}</div></div>`;
         }).join('')}
         ${o.profit!==undefined&&o.profit>0?`<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200);font-size:13px;color:var(--gray-600);">Monto total generado: <b style="color:var(--green);">${fmtMoney(o.profit)}</b></div>`:''}
         ${showTop&&!window._dialerOk?`<div style="margin-top:8px;font-size:11px;color:var(--gray-400);">Dialer offline — llamadas/citas mostradas como 0</div>`:''}
