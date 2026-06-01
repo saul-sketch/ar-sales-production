@@ -457,16 +457,18 @@
         return lbSort.dir*((a[lbSort.key]||0)-(b[lbSort.key]||0));
       });
       const head=lbTab==='closer'
-        ?`<tr><th>#</th><th onclick="lbSortBy('name')">Closer</th><th onclick="lbSortBy('visits')">Vis. atend.</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('ap2s')">Close%</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('selfgen')">Self-gen</th><th onclick="lbSortBy('profit')">Monto</th></tr>`
-        :`<tr><th>#</th><th onclick="lbSortBy('name')">Setter</th><th onclick="lbSortBy('visits')">Vis. traídas</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('v2a')">Vis→Apl</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('profit')">Monto</th></tr>`;
+        ?`<tr><th>#</th><th onclick="lbSortBy('name')">Closer</th><th onclick="lbSortBy('visits')">Vis. atend.</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('ap2s')">Close%</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('selfgen')">Self-gen</th><th onclick="lbSortBy('profit')">Monto</th><th></th></tr>`
+        :`<tr><th>#</th><th onclick="lbSortBy('name')">Setter</th><th onclick="lbSortBy('visits')">Vis. traídas</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('v2a')">Vis→Apl</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('profit')">Monto</th><th></th></tr>`;
       const body=sorted.length?sorted.map((a,i)=>{
         const isMe=a.name.toLowerCase()===me.name.toLowerCase();
         const rc=i===0?'top1':i===1?'top2':i===2?'top3':'';
         const clickAttr=`onclick="openAgentDetail('${escapeAttr(a.name)}','${lbTab}')"`;
+        const nameLink=`<span style="color:var(--blue);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(a.name)}</span>${isMe?' 👈':''}`;
+        const openCell=`<td style="color:var(--blue);font-weight:800;font-size:16px;">›</td>`;
         if(lbTab==='closer'){
-          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${fmtShare(a.sold)}</td><td class="pct ${pctCls(a.ap2s,75,50)}">${a.ap2s.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtShare(a.selfgen)}</td><td>${fmtMoney(a.profit)}</td></tr>`;
+          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${nameLink}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${fmtShare(a.sold)}</td><td class="pct ${pctCls(a.ap2s,75,50)}">${a.ap2s.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtShare(a.selfgen)}</td><td>${fmtMoney(a.profit)}</td>${openCell}</tr>`;
         }else{
-          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2a,60,40)}">${a.v2a.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td></tr>`;
+          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${nameLink}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2a,60,40)}">${a.v2a.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td>${openCell}</tr>`;
         }
       }).join(''):`<tr><td class="empty" colspan="10">Sin datos en este periodo</td></tr>`;
 
@@ -476,7 +478,8 @@
             <button class="tab ${lbTab==='closer'?'active':''}" data-lt="closer" onclick="setLbTab('closer')">Closers (cierre)</button>
             <button class="tab ${lbTab==='setter'?'active':''}" data-lt="setter" onclick="setLbTab('setter')">Setters (prospección)</button>
           </div>
-          <p class="section-sub">${lbTab==='closer'?'Efectividad atendiendo visitas (propias, de setters y walk-ins)':'Efectividad prospectando: cuántas de sus visitas convierten'} · ${me.role!=='manager'?'tu fila resaltada · ':''}click columna para ordenar</p>
+          <p class="section-sub">${lbTab==='closer'?'Efectividad atendiendo visitas (propias, de setters y walk-ins)':'Efectividad prospectando: cuántas de sus visitas convierten'} · click columna para ordenar</p>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#1e40af;font-weight:600;">👆 Toca cualquier persona para abrir su producción completa — históricos, citas, evolución, de dónde vienen sus visitas y ventas</div>
           <div id="lb-chart" style="margin-bottom:10px;"></div>
           <div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>
         </div>`;
