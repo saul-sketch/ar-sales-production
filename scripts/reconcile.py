@@ -52,6 +52,20 @@ def cal_appts(day):
     url = f"{BRIDGE}/appointments?from={day}&to={day}&by=startTime&withPhone=true&loc={AR_LOC}"
     return http_get(url, {"X-Service-Token": SERVICE_TOKEN}).get("appointments", [])
 
+def calls_by_agent(day, uid2name):
+    """sales_report_name(lower) → dials that day, from the dialer ledger (/agents).
+    Lets the per-week history show LLAM. per agent (ledger keeps ~35 days; the daily
+    cron captures yesterday each run, so history accumulates permanently in Supabase)."""
+    url = f"{BRIDGE}/agents?from={day}&to={day}&tz=-300"
+    data = http_get(url, {"X-Service-Token": SERVICE_TOKEN})
+    out = {}
+    for a in data.get("agents", []):
+        uid = a.get("agentUserId")
+        name = uid2name.get(uid)
+        key = name.lower() if name else (f"uid:{uid}" if uid else None)
+        if key: out[key] = out.get(key, 0) + (a.get("calls") or 0)
+    return out
+
 def showed_by_phone(appts):
     """phone → {title, agent} for SHOWED appts (for the visit reconciliation)."""
     out = {}
@@ -114,6 +128,12 @@ def main():
             appts = cal_appts(day)
             cal = showed_by_phone(appts)
             by_agent = status_by_agent(appts, uid2name)
+            # merge per-agent dials (so the weekly/daily history can show LLAM.)
+            for key, c in calls_by_agent(day, uid2name).items():
+                d = by_agent.setdefault(key, {s: 0 for s in STATUSES} | {"other": 0, "total": 0})
+                d["calls"] = c
+            for d in by_agent.values():
+                d.setdefault("calls", 0)
             sr = sr_visits(day)
             cset, sset = set(cal), set(sr)
             matched = cset & sset

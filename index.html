@@ -734,8 +734,8 @@
       const ln=name.toLowerCase();
       const byPeriod={}; // key -> {visits,applied,approved,sold}
       const origin={visits:{cc:0,own:0,walk:0,other:0},sold:{cc:0,own:0,walk:0,other:0}};
-      const tot={visits:0,applied:0,approved:0,sold:0,profit:0};
-      const eP=k=>byPeriod[k]||(byPeriod[k]={visits:0,applied:0,approved:0,sold:0});
+      const tot={visits:0,applied:0,approved:0,sold:0,profit:0,calls:0,appts:0};
+      const eP=k=>byPeriod[k]||(byPeriod[k]={visits:0,applied:0,approved:0,sold:0,calls:0,appts:0});
 
       reports.forEach(r=>{
         (r.visits||[]).forEach(v=>{
@@ -761,6 +761,18 @@
           origin.visits[org]++;
           if(v.sale===true)origin.sold[org]+=soldShare;
         });
+      });
+      // Merge per-period dials + appointments from the daily reconciliation (GHL calendar +
+      // dialer), so the day/week/month history shows LLAM. and CITAS per agent — not just
+      // the period total. window._recon holds by_agent_status{calls,total} per day.
+      const ln2=name.toLowerCase();
+      (window._recon||[]).forEach(r=>{
+        if(!inPeriod(r.recon_date))return;
+        const bas=((r.detail||{}).by_agent_status||{})[ln2];
+        if(!bas)return;
+        const k=periodKey(r.recon_date);const p=eP(k);
+        p.calls+=bas.calls||0;p.appts+=bas.total||0;
+        tot.calls+=bas.calls||0;tot.appts+=bas.total||0;
       });
       const keys=Object.keys(byPeriod).sort();
       return {byPeriod,keys,origin,tot};
@@ -831,7 +843,7 @@
         const v2a=pct(p.applied,p.visits),ap2s=pct(p.sold,p.approved),v2s=pct(p.sold,p.visits);
         return `<tr>
           <td style="font-weight:700;">${periodNice(k)}</td>
-          <td>—</td><td>—</td>
+          <td>${p.calls||0}</td><td>${p.appts||0}</td>
           <td>${p.visits}</td><td>${p.applied}</td><td>${p.approved}</td>
           <td class="val-strong">${fmtShare(p.sold)}</td>
           <td class="pct ${pctCls(v2a,60,40)}">${v2a.toFixed(0)}%</td>
@@ -846,7 +858,7 @@
           <thead><tr><th>${dtAgg==='day'?'Día':dtAgg==='week'?'Semana':'Mes'}</th><th>Llam.</th><th>Citas</th><th>Visitas</th><th>Aplic.</th><th>Aprob.</th><th>Ventas</th><th>V→A</th><th>Ap→V</th><th>V→Vta</th><th>Acum.</th></tr></thead>
           <tbody>${histRows||'<tr><td colspan="11" class="empty">Sin datos</td></tr>'}</tbody>
           <tfoot><tr style="border-top:2px solid var(--gray-300);font-weight:800;">
-            <td>TOTAL</td><td>—</td><td>—</td><td>${d.tot.visits}</td><td>${d.tot.applied}</td><td>${d.tot.approved}</td><td>${fmtShare(d.tot.sold)}</td>
+            <td>TOTAL</td><td>${d.tot.calls||0}</td><td>${d.tot.appts||0}</td><td>${d.tot.visits}</td><td>${d.tot.applied}</td><td>${d.tot.approved}</td><td>${fmtShare(d.tot.sold)}</td>
             <td class="pct">${v2a.toFixed(0)}%</td><td class="pct">${ap2s.toFixed(0)}%</td><td class="pct">${v2s.toFixed(0)}%</td><td>${fmtMoney(d.tot.profit)}</td>
           </tr></tfoot>
         </table></div>
