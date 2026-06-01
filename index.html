@@ -574,16 +574,18 @@
 
     function renderLeaderboards(s){
       const host=document.getElementById('leaderboards');
-      const pool=(lbTab==='closer'?s.close:s.prospect).map(a=>({...a,
-        v2a:pct(a.applied,a.visits),a2ap:pct(a.approved,a.applied),ap2s:pct(a.sold,a.approved),v2s:pct(a.sold,a.visits)
-      })).filter(a=>a.visits>0||a.sold>0);
+      const pool=(lbTab==='closer'?s.close:s.prospect).map(a=>{const dl=dialerFor(a.name);return {...a,
+        calls:dl.calls,appts:dl.appointments,
+        v2a:pct(a.applied,a.visits),a2ap:pct(a.approved,a.applied),ap2s:pct(a.sold,a.approved),v2s:pct(a.sold,a.visits),
+        showRate:pct(a.visits,dl.appointments)
+      };}).filter(a=>a.visits>0||a.sold>0||a.calls>0);
       const sorted=[...pool].sort((a,b)=>{
         if(lbSort.key==='name')return lbSort.dir*String(a.name).localeCompare(String(b.name));
         return lbSort.dir*((a[lbSort.key]||0)-(b[lbSort.key]||0));
       });
       const head=lbTab==='closer'
         ?`<tr><th>#</th><th onclick="lbSortBy('name')">Closer</th><th onclick="lbSortBy('visits')">Vis. atend.</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('ap2s')">Close%</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('selfgen')">Self-gen</th><th onclick="lbSortBy('profit')">Monto</th><th></th></tr>`
-        :`<tr><th>#</th><th onclick="lbSortBy('name')">Setter</th><th onclick="lbSortBy('visits')">Vis. traídas</th><th onclick="lbSortBy('applied')">Aplic.</th><th onclick="lbSortBy('approved')">Aprob.</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('v2a')">Vis→Apl</th><th onclick="lbSortBy('v2s')">Vis→Venta</th><th onclick="lbSortBy('profit')">Monto</th><th></th></tr>`;
+        :`<tr><th>#</th><th onclick="lbSortBy('name')">Setter</th><th onclick="lbSortBy('calls')">Llam. 📞</th><th onclick="lbSortBy('appts')">Citas 📅</th><th onclick="lbSortBy('visits')">Visitas</th><th onclick="lbSortBy('showRate')">Show%</th><th onclick="lbSortBy('sold')">Ventas</th><th onclick="lbSortBy('v2s')">Vis→Vta</th><th onclick="lbSortBy('profit')">Monto</th><th></th></tr>`;
       const body=sorted.length?sorted.map((a,i)=>{
         const isMe=a.name.toLowerCase()===me.name.toLowerCase();
         const rc=i===0?'top1':i===1?'top2':i===2?'top3':'';
@@ -593,7 +595,7 @@
         if(lbTab==='closer'){
           return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${nameLink}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${fmtShare(a.sold)}</td><td class="pct ${pctCls(a.ap2s,75,50)}">${a.ap2s.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtShare(a.selfgen)}</td><td>${fmtMoney(a.profit)}</td>${openCell}</tr>`;
         }else{
-          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${nameLink}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2a,60,40)}">${a.v2a.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td>${openCell}</tr>`;
+          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${nameLink}</td><td style="color:#0ea5e9;font-weight:600;">${a.calls||0}</td><td style="color:#6366f1;font-weight:600;">${a.appts||0}</td><td>${a.visits}</td><td class="pct ${pctCls(a.showRate,40,20)}">${a.appts>0?a.showRate.toFixed(0)+'%':'—'}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td>${openCell}</tr>`;
         }
       }).join(''):`<tr><td class="empty" colspan="10">Sin datos en este periodo</td></tr>`;
 
