@@ -127,9 +127,48 @@
     .hero-cta{margin-top:14px;width:100%;padding:11px;background:rgba(255,255,255,.14);color:white;border:1px solid rgba(255,255,255,.25);border-radius:11px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;}
     .hero-cta:hover{background:rgba(255,255,255,.22);}
 
+    /* ===== Layout shell: sidebar + main ===== */
+    .shell{display:flex;min-height:calc(100vh - 59px);max-width:1340px;margin:0 auto;}
+    .sidebar{width:236px;flex-shrink:0;background:white;border-right:1px solid var(--gray-200);padding:18px 12px 40px;overflow-y:auto;}
+    .main-content{flex:1;min-width:0;padding:20px 18px 56px;}
+    .hamburger{display:none;background:var(--gray-100);border:none;border-radius:9px;width:38px;height:38px;align-items:center;justify-content:center;font-size:17px;cursor:pointer;color:var(--gray-700);}
+    .sidebar-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;display:none;}
+    @media(max-width:900px){
+      .sidebar{position:fixed;top:0;left:0;height:100vh;z-index:200;transform:translateX(-100%);transition:transform .25s ease;box-shadow:var(--shadow-lg);width:268px;}
+      .sidebar.open{transform:translateX(0);}
+      .sidebar-backdrop.show{display:block;}
+      .hamburger{display:flex;}
+    }
+    /* Sidebar sections */
+    .side-section{margin-bottom:18px;}
+    .side-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-400);padding:0 10px 7px;}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--gray-600);cursor:pointer;margin-bottom:2px;transition:all .12s;border:none;background:transparent;width:100%;text-align:left;font-family:inherit;}
+    .nav-item:hover{background:var(--gray-100);}
+    .nav-item.active{background:var(--primary);color:white;}
+    .nav-item .ico{font-size:15px;width:20px;text-align:center;}
+    .period-item{display:block;width:100%;text-align:left;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;color:var(--gray-600);cursor:pointer;border:none;background:transparent;font-family:inherit;margin-bottom:1px;}
+    .period-item:hover{background:var(--gray-100);}
+    .period-item.active{background:#eff6ff;color:#1e40af;font-weight:800;}
+    .team-search{width:100%;padding:8px 11px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:8px;}
+    .team-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 11px;border-radius:8px;font-size:13px;color:var(--gray-700);cursor:pointer;border:none;background:transparent;width:100%;text-align:left;font-family:inherit;}
+    .team-item:hover{background:var(--gray-100);}
+    .team-item .rl{font-size:8px;font-weight:800;padding:1px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px;}
+    .team-item .rl.closer{background:#eff6ff;color:#1e40af;}.team-item .rl.setter{background:#f0fdf4;color:#065f46;}
+    /* Tooltip (?) */
+    .tip{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--gray-300);color:white;font-size:10px;font-weight:800;cursor:help;margin-left:5px;vertical-align:middle;position:relative;}
+    .tip:hover .tip-box,.tip.show .tip-box{display:block;}
+    .tip-box{display:none;position:absolute;bottom:135%;left:50%;transform:translateX(-50%);background:var(--gray-900);color:white;font-size:11px;font-weight:500;line-height:1.45;padding:9px 11px;border-radius:8px;width:210px;z-index:60;text-align:left;text-transform:none;letter-spacing:normal;box-shadow:var(--shadow-lg);}
+    .tip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--gray-900);}
+    .back-btn{display:inline-flex;align-items:center;gap:6px;background:var(--gray-100);border:none;border-radius:9px;padding:8px 14px;font-size:13px;font-weight:700;color:var(--gray-700);cursor:pointer;font-family:inherit;margin-bottom:14px;}
+    .back-btn:hover{background:var(--gray-200);}
+    .page-title{font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:3px;}
+    .page-sub{font-size:13px;color:var(--gray-500);margin-bottom:16px;}
+    .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px;}
+
     @media(max-width:640px){
       .hero-kpis{grid-template-columns:repeat(2,1fr);}
       .funnel-stage{grid-template-columns:96px 1fr 54px;}
+      .main-content{padding:16px 13px 48px;}
     }
   </style>
 </head>
@@ -148,6 +187,7 @@
   <div id="screen-app" style="display:none;">
     <div class="topbar">
       <div class="brand">
+        <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Menú">☰</button>
         <div class="brand-mark">AR</div>
         <div class="brand-text"><h1>Producción de Ventas</h1><small id="last-refresh">—</small></div>
       </div>
@@ -156,37 +196,10 @@
         <div class="user-chip"><span id="user-name">—</span><span class="role-badge" id="user-role">—</span></div>
       </div>
     </div>
-
-    <div class="container">
-      <div class="filters">
-        <span class="filter-label">Periodo</span>
-        <div class="filter-group" id="period-filter">
-          <button class="filter-tab" data-period="mtd">Mes actual</button>
-          <button class="filter-tab active" data-period="30">30d</button>
-          <button class="filter-tab" data-period="qtd">Trimestre</button>
-          <button class="filter-tab" data-period="all">Todo</button>
-        </div>
-        <span class="filter-label" id="loc-lbl">Locación</span>
-        <div class="filter-group" id="loc-filter">
-          <button class="filter-tab active" data-loc="all">Ambas</button>
-          <button class="filter-tab" data-loc="Orlando">Orlando</button>
-          <button class="filter-tab" data-loc="Kissimmee">Kissimmee</button>
-        </div>
-      </div>
-
-      <div id="personal"></div>
-      <div id="leaderboards"></div>
-    </div>
-  </div>
-
-  <!-- Agent detail drawer -->
-  <div class="detail-overlay" id="detail-overlay" onclick="if(event.target.id==='detail-overlay')closeDetail()">
-    <div class="detail-drawer">
-      <div class="detail-head">
-        <div><div class="nm" id="dt-name">—</div><div class="rl" id="dt-role">—</div></div>
-        <button class="detail-close" onclick="closeDetail()">Cerrar</button>
-      </div>
-      <div class="detail-body" id="dt-body"></div>
+    <div class="shell">
+      <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+      <aside class="sidebar" id="sidebar"></aside>
+      <main class="main-content" id="main-content"></main>
     </div>
   </div>
 
@@ -202,9 +215,21 @@
     let allReports=[];
     let filterPeriod='30',filterLoc='all';
     let lbTab='closer',lbSort={key:'sold',dir:-1};
+    let view='global';          // global | setters | closers | recon | profile
+    let profileCtx=null;        // {name, facet}
+    let teamFilter='';
+    const MONTHS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+    // ===== Navigation / router =====
+    let prevView='global';
+    function navigate(v,ctx){if(v==='profile'&&view!=='profile')prevView=view;view=v;if(v==='profile'&&ctx)profileCtx=ctx;closeSidebar();render();window.scrollTo(0,0);}
+    function goProfile(name,facet){navigate('profile',{name,facet});}
+    async function setPeriod(p){filterPeriod=p;renderSidebar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
+    function setLoc(l){filterLoc=l;render();}
+    function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
+    function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
 
     document.addEventListener('DOMContentLoaded',async()=>{
-      bindFilters();
       const ident=resolveIdentity();
       if(!ident){document.getElementById('screen-gate').style.display='flex';return;}
       me=ident;
@@ -212,8 +237,7 @@
       document.getElementById('user-name').textContent=me.name;
       const rb=document.getElementById('user-role');
       rb.textContent=me.role;rb.className='role-badge '+me.role;
-      document.getElementById('loc-lbl').style.display=me.role==='manager'?'':'none';
-      document.getElementById('loc-filter').style.display=me.role==='manager'?'':'none';
+      view=me.role==='manager'?'global':'profile';
       await refresh();
     });
 
@@ -239,12 +263,17 @@
       const now=new Date();
       const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       const to=iso(now);
-      let from;
-      if(filterPeriod==='mtd')from=iso(new Date(now.getFullYear(),now.getMonth(),1));
+      let from,toOut=to;
+      if(/^\d{4}-\d{2}$/.test(filterPeriod)){
+        const[y,m]=filterPeriod.split('-').map(Number);
+        from=`${filterPeriod}-01`;
+        toOut=`${filterPeriod}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
+      }
+      else if(filterPeriod==='mtd')from=iso(new Date(now.getFullYear(),now.getMonth(),1));
       else if(filterPeriod==='30'){const c=new Date();c.setDate(c.getDate()-30);from=iso(c);}
       else if(filterPeriod==='qtd'){const q=Math.floor(now.getMonth()/3);from=iso(new Date(now.getFullYear(),q*3,1));}
       else from='2026-01-01';
-      return {from,to};
+      return {from,to:toOut};
     }
 
     async function loadDialer(){
@@ -281,6 +310,8 @@
         ]);
         allReports=await rRes.json();
         const agents=await aRes.json();
+        window._agents=agents;
+        window._agentNames={};agents.forEach(a=>{if(a.name)window._agentNames[a.name.toLowerCase()]=a.name;});
         window._mapping=await mRes.json();
         window._selfReports=await srRes.json();
         try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=30`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
@@ -290,11 +321,12 @@
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
           const rb=document.getElementById('user-role');rb.textContent=me.role;rb.className='role-badge '+me.role;
+          if(view==='profile')profileCtx={name:me.name,facet:me.role==='closer'?'close':'prospect'};
         }
         await loadDialer(); // live dialer feed for current period
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
-      }catch(e){document.getElementById('leaderboards').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}
+      }catch(e){document.getElementById('main-content').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}
     }
 
     function dialerFor(name){
@@ -319,20 +351,21 @@
     // Pending ones (confirmed/new = future) are excluded from the denominator.
     function ghlShowRate(st){const decided=(st.showed||0)+(st.noshow||0)+(st.cancelled||0)+(st.invalid||0);return decided>0?st.showed/decided*100:0;}
 
-    function bindFilters(){
-      document.querySelectorAll('#period-filter .filter-tab').forEach(b=>b.addEventListener('click',()=>{
-        document.querySelectorAll('#period-filter .filter-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');filterPeriod=b.dataset.period;render();}));
-      document.querySelectorAll('#loc-filter .filter-tab').forEach(b=>b.addEventListener('click',()=>{
-        document.querySelectorAll('#loc-filter .filter-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');filterLoc=b.dataset.loc;render();}));
-    }
-
     function inPeriod(d){
       if(filterPeriod==='all')return true;
+      if(/^\d{4}-\d{2}$/.test(filterPeriod))return String(d).slice(0,7)===filterPeriod; // specific month
       const dt=new Date(d+'T00:00:00'),now=new Date();
       if(filterPeriod==='mtd')return dt.getFullYear()===now.getFullYear()&&dt.getMonth()===now.getMonth();
       if(filterPeriod==='30'){const c=new Date();c.setDate(c.getDate()-30);return dt>=c;}
       if(filterPeriod==='qtd'){const q=Math.floor(now.getMonth()/3);return dt>=new Date(now.getFullYear(),q*3,1);}
       return true;
+    }
+    // Months present in the data (newest first) — feeds the sidebar period list.
+    function availableMonths(){
+      const set=new Set();
+      (allReports||[]).forEach(r=>{if(r.date)set.add(String(r.date).slice(0,7));});
+      (window._recon||[]).forEach(r=>{if(r.recon_date)set.add(String(r.recon_date).slice(0,7));});
+      return [...set].filter(m=>/^\d{4}-\d{2}$/.test(m)).sort().reverse();
     }
     function clean(s){if(!s)return null;const t=String(s).trim();return ['','n/a','na','—','-'].includes(t.toLowerCase())?null:t;}
     function fmtShare(x){return Number.isInteger(x)?String(x):x.toFixed(1);}
@@ -382,28 +415,149 @@
     }
 
     function render(){
+      renderSidebar();
       const s=buildStats();
-      renderPersonal(s);
-      renderReconciliation();
+      if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
+      if(view==='setters'){renderRoleView(s,'setter');return;}
+      if(view==='closers'){renderRoleView(s,'closer');return;}
+      if(view==='recon'){renderReconView();return;}
+      renderGlobal(s); // default (managers)
+    }
+
+    // ===== Sidebar =====
+    function teamList(){
+      const names=new Set();
+      (window._closerSet||new Set()).forEach(n=>names.add(n));
+      (window._setterSet||new Set()).forEach(n=>names.add(n));
+      return [...names].map(ln=>{
+        const isCloser=(window._closerSet||new Set()).has(ln);
+        return {name:(window._agentNames&&window._agentNames[ln])||ln,role:isCloser?'closer':'setter',facet:isCloser?'close':'prospect'};
+      }).sort((a,b)=>a.name.localeCompare(b.name));
+    }
+    function renderSidebar(){
+      const isMgr=me.role==='manager';
+      let nav;
+      if(isMgr){
+        nav=[{v:'global',ico:'📊',lbl:'Global'},{v:'setters',ico:'📞',lbl:'Setters'},
+             {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'🔗',lbl:'Reconciliación'}];
+      }else{
+        nav=[{v:'profile',ico:'⭐',lbl:'Mi producción',self:true},
+             {v:me.role==='closer'?'closers':'setters',ico:'🏆',lbl:'Mi ranking'}];
+      }
+      const navHtml=nav.map(n=>{
+        let active=view===n.v;
+        if(n.self)active=view==='profile'&&profileCtx&&profileCtx.name.toLowerCase()===me.name.toLowerCase();
+        const click=n.self?`goProfile('${escapeAttr(me.name)}','${me.role==='closer'?'close':'prospect'}')`:`navigate('${n.v}')`;
+        return `<button class="nav-item ${active?'active':''}" onclick="${click}"><span class="ico">${n.ico}</span>${n.lbl}</button>`;
+      }).join('');
+      const months=availableMonths();
+      const periods=[{p:'30',lbl:'Últimos 30 días'},{p:'mtd',lbl:'Mes actual'},
+        ...months.map(m=>{const[y,mm]=m.split('-');return {p:m,lbl:`${MONTHS[+mm-1]} ${y}`};}),
+        {p:'qtd',lbl:'Trimestre'},{p:'all',lbl:'Todo el tiempo'}];
+      const perHtml=periods.map(x=>`<button class="period-item ${filterPeriod===x.p?'active':''}" onclick="setPeriod('${x.p}')">${x.lbl}</button>`).join('');
+      let locHtml='';
+      if(isMgr)locHtml=`<div class="side-section"><div class="side-title">Locación</div>
+        ${[['all','Ambas'],['Orlando','Orlando'],['Kissimmee','Kissimmee']].map(([v,l])=>`<button class="period-item ${filterLoc===v?'active':''}" onclick="setLoc('${v}')">${l}</button>`).join('')}</div>`;
+      let teamHtml='';
+      if(isMgr){
+        const all=teamList(),f=all.filter(t=>t.name.toLowerCase().includes(teamFilter.toLowerCase()));
+        teamHtml=`<div class="side-section"><div class="side-title">Equipo (${all.length})</div>
+          <input class="team-search" placeholder="Buscar persona…" value="${escapeAttr(teamFilter)}" oninput="teamFilter=this.value;renderSidebar();">
+          <div style="max-height:320px;overflow-y:auto;">${f.length?f.map(t=>
+            `<button class="team-item" onclick="goProfile('${escapeAttr(t.name)}','${t.facet}')"><span>${escapeHtml(t.name)}</span><span class="rl ${t.role}">${t.role==='closer'?'C':'S'}</span></button>`
+          ).join(''):'<div style="font-size:12px;color:var(--gray-400);padding:8px 11px;">Sin resultados</div>'}</div></div>`;
+      }
+      document.getElementById('sidebar').innerHTML=`
+        <div class="side-section"><div class="side-title">Vista</div>${navHtml}</div>
+        <div class="side-section"><div class="side-title">Periodo</div>${perHtml}</div>
+        ${locHtml}${teamHtml}`;
+    }
+
+    // ===== Global (manager dashboard) =====
+    function kpiCard(ico,lbl,val,color){return `<div class="avg-card"><div class="v" style="color:${color||'var(--gray-900)'};">${val}</div><div class="k">${ico} ${lbl}</div></div>`;}
+    function teamTotals(s){
+      let visits=0,applied=0,approved=0,sold=0,profit=0;
+      s.reports.forEach(r=>(r.visits||[]).forEach(v=>{visits++;if(v.applied===true)applied++;if(v.result==='approved')approved++;if(v.sale===true){sold++;profit+=v.net_profit||0;}}));
+      let calls=0,appts=0;Object.values(window._dialerByAgent||{}).forEach(d=>{calls+=d.calls||0;appts+=d.appointments||0;});
+      return {visits,applied,approved,sold,profit,calls,appts};
+    }
+    function globalFunnel(t){
+      const stages=[{name:'Llamadas',val:t.calls,color:'#0ea5e9'},{name:'Citas',val:t.appts,color:'#6366f1',conv:pct(t.visits,t.appts),convLbl:'show'},
+        {name:'Visitas',val:t.visits,color:'#3b82f6'},{name:'Aplicaron',val:t.applied,color:'#06b6d4',conv:pct(t.applied,t.visits)},
+        {name:'Aprobados',val:t.approved,color:'#8b5cf6',conv:pct(t.approved,t.applied)},{name:'Ventas',val:t.sold,color:'#10b981',conv:pct(t.sold,t.approved)}];
+      const max=Math.max(t.calls,t.visits,1);
+      return `<div class="section-card"><h3>Embudo del equipo</h3><p class="section-sub">De llamada a venta — todo el equipo junto</p>
+        ${stages.map(st=>{const w=Math.max(pct(st.val,max),3);return `<div class="funnel-stage"><div class="name">${st.name}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${st.color};">${fmtShare(st.val)}</div></div><div class="conv">${st.conv!==undefined?(st.convLbl?st.convLbl+' ':'↓')+st.conv.toFixed(0)+'%':''}</div></div>`;}).join('')}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200);font-size:13px;color:var(--gray-600);">Monto total: <b style="color:var(--green);">${fmtMoney(t.profit)}</b></div></div>`;
+    }
+    function miniLeaderboard(title,rows,facet){
+      if(!rows.length)return `<div class="section-card"><h3>${title}</h3><div class="empty">Sin datos</div></div>`;
+      return `<div class="section-card"><h3>${title}</h3>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Nombre</th><th>Visitas</th><th>Ventas</th><th>Monto</th><th></th></tr></thead>
+        <tbody>${rows.map((a,i)=>`<tr class="clickable-row" onclick="goProfile('${escapeAttr(a.name)}','${facet}')">
+          <td class="rank-num ${i===0?'top1':i===1?'top2':i===2?'top3':''}">${i+1}</td>
+          <td class="agent-name-cell"><span style="color:var(--blue);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(a.name)}</span></td>
+          <td>${a.visits}</td><td class="val-strong">${fmtShare(a.sold)}</td><td>${fmtMoney(a.profit)}</td>
+          <td style="color:var(--blue);font-weight:800;">›</td></tr>`).join('')}</tbody></table></div></div>`;
+    }
+    function renderGlobal(s){
+      const t=teamTotals(s);
+      const topClosers=[...s.close].sort((a,b)=>b.sold-a.sold).slice(0,5);
+      const topSetters=[...s.prospect].sort((a,b)=>b.sold-a.sold).slice(0,5);
+      const rec=(window._recon||[]).filter(r=>inPeriod(r.recon_date));
+      const recShow=rec.reduce((a,r)=>a+(r.showed_count||0),0),recMatch=rec.reduce((a,r)=>a+(r.matched||0),0),recCalOnly=rec.reduce((a,r)=>a+(r.calendar_only||0),0);
+      const recMr=recShow>0?(recMatch/recShow*100):0;
+      let html=`<div class="page-title">Visión global</div>
+        <div class="page-sub">Todo el equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''}</div>
+        <div class="kpi-row">
+          ${kpiCard('📞','Llamadas',t.calls.toLocaleString('en-US'),'#0ea5e9')}
+          ${kpiCard('📅','Citas',t.appts,'#6366f1')}
+          ${kpiCard('🚶','Visitas',t.visits,'#3b82f6')}
+          ${kpiCard('✅','Aprobados',t.approved,'#8b5cf6')}
+          ${kpiCard('🏆','Ventas',fmtShare(t.sold),'#10b981')}
+          ${kpiCard('💵','Monto',fmtMoney(t.profit),'#059669')}
+        </div>${globalFunnel(t)}
+        ${miniLeaderboard('Top closers',topClosers,'close')}
+        ${miniLeaderboard('Top setters',topSetters,'prospect')}
+        <div class="section-card" style="border:1.5px solid #bfdbfe;">
+          <h3>🔗 Reconciliación — resumen ${tip('Cruce diario entre las citas que el calendario de GHL marca como llegadas (showed) y las visitas que reportan los managers. Si no cuadran, alguien no registró bien.')}</h3>
+          <p class="section-sub">Cuántas citas del calendario cuadran con las visitas reportadas.</p>
+          <div class="kpi-row">
+            ${kpiCard('🎯','Match promedio',recMr.toFixed(0)+'%','#3b82f6')}
+            ${kpiCard('✅','Cuadran',recMatch,'#10b981')}
+            ${kpiCard('⚠️','Llegó sin reporte',recCalOnly,'#ef4444')}
+          </div>
+          <button class="btn" style="background:var(--primary);color:white;" onclick="navigate('recon')">Ver reconciliación diaria →</button>
+        </div>`;
+      document.getElementById('main-content').innerHTML=html;
+      drawQueuedCharts();
+    }
+
+    // ===== Role view (setters / closers leaderboard) =====
+    function renderRoleView(s,role){
+      lbTab=role==='closer'?'closer':'setter';
+      document.getElementById('main-content').innerHTML=`
+        <div class="page-title">${role==='closer'?'🎯 Closers':'📞 Setters'}</div>
+        <div class="page-sub">${role==='closer'?'Efectividad atendiendo visitas (propias, de setters y walk-ins)':'Efectividad prospectando: llamadas, citas y visitas que convierten'} · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca a una persona para su perfil</div>
+        <div id="leaderboards"></div>`;
       renderLeaderboards(s);
     }
 
-    function renderReconciliation(){
-      // Manager-only: calendar shows vs reported visits, by phone, day by day
-      const host=document.getElementById('personal');
-      if(me.role!=='manager')return;
-      const rec=(window._recon||[]);
-      if(!rec.length)return;
+    // Tooltip helper: "?" that shows an explanation on hover (desktop) or tap (mobile)
+    function tip(text){return `<span class="tip" onclick="event.stopPropagation();this.classList.toggle('show')">?<span class="tip-box">${text}</span></span>`;}
+
+    function renderReconView(){
+      const rec=(window._recon||[]).filter(r=>inPeriod(r.recon_date));
+      const mc=document.getElementById('main-content');
+      if(!rec.length){mc.innerHTML=`<div class="page-title">🔗 Reconciliación diaria</div><div class="page-sub">${periodLabel()}</div><div class="section-card"><div class="empty">Sin datos en este periodo</div></div>`;return;}
       const totShow=rec.reduce((a,r)=>a+(r.showed_count||0),0);
       const totMatch=rec.reduce((a,r)=>a+(r.matched||0),0);
       const totCalOnly=rec.reduce((a,r)=>a+(r.calendar_only||0),0);
       const totRepOnly=rec.reduce((a,r)=>a+(r.report_only||0),0);
       const avgMr=totShow>0?(totMatch/totShow*100):0;
       const rows=rec.map(r=>{
-        const mr=r.match_rate||0;
-        const mrCls=mr>=80?'good':mr>=50?'mid':'low';
-        const d=new Date(r.recon_date+'T00:00:00');
-        const dn=`${d.getDate()}/${d.getMonth()+1}`;
+        const mr=r.match_rate||0,mrCls=mr>=80?'good':mr>=50?'mid':'low';
+        const d=new Date(r.recon_date+'T00:00:00');const dn=`${d.getDate()}/${d.getMonth()+1}`;
         const calOnlyNames=(r.detail&&r.detail.calendar_only||[]).map(x=>x.title||('...'+x.phone)).slice(0,4).join(', ');
         return `<tr>
           <td style="font-weight:700;">${dn}</td>
@@ -414,26 +568,37 @@
           <td style="color:var(--orange);font-weight:600;">${r.report_only||0}</td>
         </tr>`;
       }).join('');
-      const html=`<div class="section-card" style="border:1.5px solid #bfdbfe;">
-        <h3>🔗 Reconciliación diaria — Calendario vs Reporte</h3>
-        <p class="section-sub">Cruce exacto por teléfono. <b style="color:var(--red);">Cal. solo</b> = el calendario dice que llegó pero el manager NO lo reportó. <b style="color:var(--orange);">Rep. solo</b> = visita reportada sin cita (walk-in o cita no marcada).</p>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
-          <div class="avg-card"><div class="v">${avgMr.toFixed(0)}%</div><div class="k">Match promedio</div></div>
-          <div class="avg-card"><div class="v" style="color:var(--green);">${totMatch}</div><div class="k">Cuadran</div></div>
-          <div class="avg-card"><div class="v" style="color:var(--red);">${totCalOnly}</div><div class="k">Llegó sin reporte</div></div>
-          <div class="avg-card"><div class="v" style="color:var(--orange);">${totRepOnly}</div><div class="k">Reporte sin cita</div></div>
+      mc.innerHTML=`
+        <div class="page-title">🔗 Reconciliación diaria</div>
+        <div class="page-sub">Calendario de GHL vs reporte de los managers · cruce exacto por teléfono · ${periodLabel()}</div>
+        <div class="kpi-row">
+          ${kpiCard('🎯','Match promedio '+tip('De las citas que el calendario marcó como llegadas (showed), qué % también aparece como visita en el reporte del manager. 100% = todo cuadra.'),avgMr.toFixed(0)+'%','#3b82f6')}
+          ${kpiCard('✅','Cuadran '+tip('Citas que el calendario marca llegadas Y el manager reportó como visita. Todo bien registrado.'),totMatch,'#10b981')}
+          ${kpiCard('⚠️','Llegó sin reporte '+tip('El calendario dice que el cliente llegó, pero el manager NO lo reportó como visita. Es producción que no quedó registrada.'),totCalOnly,'#ef4444')}
+          ${kpiCard('📝','Reporte sin cita '+tip('El manager reportó una visita, pero no hay una cita marcada como llegada en el calendario. Suele ser walk-in o cita no actualizada.'),totRepOnly,'#f97316')}
         </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Día</th><th>Showed 📅</th><th>Reporte 👔</th><th>Cuadran</th><th>Match%</th><th>Cal. solo ⚠</th><th>Rep. solo</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div>
-        <p style="font-size:11px;color:var(--gray-400);margin-top:8px;">Se actualiza automático cada día. ${rec.length} días procesados.</p>
-      </div>`;
-      // append after personal (which is empty for managers) — prepend into host
-      host.innerHTML=html+host.innerHTML;
+        <div class="section-card">
+          <p class="section-sub">Cada día, desde ayer hacia atrás. Toca el <b>?</b> de cada columna para ver qué significa.</p>
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>Día</th>
+              <th>Showed 📅 ${tip('Citas que el calendario de GHL marca como que el cliente SÍ llegó ese día.')}</th>
+              <th>Reporte 👔 ${tip('Visitas que el manager escribió en el reporte de ventas ese día.')}</th>
+              <th>Cuadran ${tip('Coinciden por teléfono: misma persona en el calendario y en el reporte.')}</th>
+              <th>Match% ${tip('Cuadran ÷ Showed. Qué tan bien el reporte refleja lo que el calendario dice.')}</th>
+              <th>Cal. solo ⚠ ${tip('Llegaron según el calendario pero NO se reportaron. Debajo salen los nombres.')}</th>
+              <th>Rep. solo ${tip('Reportados como visita pero sin cita marcada (walk-in o cita no actualizada).')}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+          <p style="font-size:11px;color:var(--gray-400);margin-top:8px;">Se actualiza automático cada día. ${rec.length} días en este periodo.</p>
+        </div>`;
     }
 
-    function periodLabel(){return {mtd:'Mes actual',30:'Últimos 30 días',qtd:'Este trimestre',all:'Todo el tiempo'}[filterPeriod];}
+    function periodLabel(){
+      if(/^\d{4}-\d{2}$/.test(filterPeriod)){const[y,m]=filterPeriod.split('-');return `${MONTHS[+m-1]} ${y}`;}
+      return {mtd:'Mes actual',30:'Últimos 30 días',qtd:'Este trimestre',all:'Todo el tiempo'}[filterPeriod]||filterPeriod;
+    }
 
     function renderPersonal(s){
       const host=document.getElementById('personal');
@@ -665,12 +830,7 @@
 
       host.innerHTML=`
         <div class="section-card">
-          <div class="tabs" id="lb-tabs">
-            <button class="tab ${lbTab==='closer'?'active':''}" data-lt="closer" onclick="setLbTab('closer')">Closers (cierre)</button>
-            <button class="tab ${lbTab==='setter'?'active':''}" data-lt="setter" onclick="setLbTab('setter')">Setters (prospección)</button>
-          </div>
-          <p class="section-sub">${lbTab==='closer'?'Efectividad atendiendo visitas (propias, de setters y walk-ins)':'Efectividad prospectando: cuántas de sus visitas convierten'} · click columna para ordenar</p>
-          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#1e40af;font-weight:600;">👆 Toca cualquier persona para abrir su producción completa — históricos, citas, evolución, de dónde vienen sus visitas y ventas</div>
+          <p class="section-sub">Click en una columna para ordenar · toca a una persona para su perfil completo</p>
           <div id="lb-chart" style="margin-bottom:10px;"></div>
           <div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div>
         </div>`;
@@ -694,19 +854,12 @@
     let dtAgg='week'; // day | week | month
     let dtContext=null; // {name, facet}
 
+    // Open a person's full profile page (from any leaderboard/list)
     function openAgentDetail(name,lbTabOrFacet){
-      // facet: 'close' for closers leaderboard, 'prospect' for setters
       const facet=lbTabOrFacet==='setter'?'prospect':lbTabOrFacet==='closer'?'close':lbTabOrFacet;
-      dtContext={name,facet};
-      document.getElementById('detail-overlay').classList.add('show');
-      renderAgentDetail();
+      goProfile(name,facet);
     }
-    function openMyDetail(){
-      const facet=(me.role==='closer')?'close':'prospect';
-      openAgentDetail(me.name,facet);
-    }
-    function closeDetail(){document.getElementById('detail-overlay').classList.remove('show');dtContext=null;}
-    function setDtAgg(m){dtAgg=m;renderAgentDetail();}
+    function setDtAgg(m){dtAgg=m;render();}
 
     function isoWeekKey(dateISO){
       const d=new Date(dateISO+'T00:00:00');
@@ -778,20 +931,48 @@
       return {byPeriod,keys,origin,tot};
     }
 
-    function renderAgentDetail(){
-      if(!dtContext)return;
-      const {name,facet}=dtContext;
+    function renderProfilePage(s){
+      if(!profileCtx)return;
+      const {name,facet}=profileCtx;
       const d=buildAgentDetail(name,facet);
       const isClose=facet==='close';
-      document.getElementById('dt-name').textContent=name;
-      document.getElementById('dt-role').textContent=(isClose?'Cierre — visitas atendidas':'Prospección — visitas traídas')+' · '+periodLabel();
+      const isMe=name.toLowerCase()===me.name.toLowerCase();
+      const rowClose=s.close.find(a=>a.name.toLowerCase()===name.toLowerCase());
+      const rowProspect=s.prospect.find(a=>a.name.toLowerCase()===name.toLowerCase());
+      const pool=isClose?s.close:s.prospect;
+      const primary=(isClose?rowClose:rowProspect)||{visits:0,applied:0,approved:0,sold:0,profit:0};
+      const sortedPool=[...pool].sort((a,b)=>b.sold-a.sold);
+      const pos=sortedPool.findIndex(a=>a.name.toLowerCase()===name.toLowerCase())+1;
+      const poolN=pool.length;
+      const backLbl={global:'Global',setters:'Setters',closers:'Closers',recon:'Reconciliación'}[prevView]||'Atrás';
 
       const nP=d.keys.length||1;
       const avgLbl={day:'día',week:'semana',month:'mes'}[dtAgg];
       const v2a=pct(d.tot.applied,d.tot.visits),a2ap=pct(d.tot.approved,d.tot.applied),ap2s=pct(d.tot.sold,d.tot.approved),v2s=pct(d.tot.sold,d.tot.visits);
 
       let html='';
-      // Mode toggle
+      // Back + hero
+      html+=`<button class="back-btn" onclick="navigate('${prevView}')">← ${backLbl}</button>`;
+      html+=`<div class="hero">
+        <div class="hero-top">
+          <div><div class="hero-name">${escapeHtml(name)}</div><div class="hero-role">${isClose?'Closer · cierre':'Setter · prospección'} · ${periodLabel()}</div></div>
+          <div class="hero-rank"><div class="pos">#${pos||'—'}</div><div class="lbl">de ${poolN} ${isClose?'closers':'setters'}</div></div>
+        </div>
+        <div class="hero-kpis">
+          <div class="hero-stat"><div class="v">${primary.visits}</div><div class="k">${isClose?'Visitas atendidas':'Visitas traídas'}</div></div>
+          <div class="hero-stat"><div class="v">${primary.applied}</div><div class="k">Aplicaron</div><div class="c">${pct(primary.applied,primary.visits).toFixed(0)}%</div></div>
+          <div class="hero-stat"><div class="v">${primary.approved}</div><div class="k">Aprobados</div><div class="c">${pct(primary.approved,primary.applied).toFixed(0)}%</div></div>
+          <div class="hero-stat"><div class="v" style="color:#34d399;">${fmtShare(primary.sold)}</div><div class="k">Ventas</div><div class="c">${pct(primary.sold,primary.approved).toFixed(0)}% cierre</div></div>
+        </div>
+      </div>`;
+      // Funnel(s) — closers show cierre + their own prospección; setters show prospección
+      if(isClose){
+        html+=funnelCard('Cierre',rowClose||{visits:0,applied:0,approved:0,sold:0,profit:0},'close','Visitas que atendió (propias, de setters y walk-ins)',name);
+        if(rowProspect)html+=funnelCard('Prospección propia',rowProspect,'prospect','Sus llamadas, citas y visitas self-gen',name);
+      }else{
+        html+=funnelCard('Prospección',rowProspect||{visits:0,applied:0,approved:0,sold:0,profit:0},'prospect','Llamadas, citas y visitas que trajo, y su conversión',name);
+      }
+      // Evolución temporal: mode toggle
       html+=`<div class="mode-toggle">
         ${['day','week','month'].map(m=>`<button class="filter-tab ${dtAgg===m?'active':''}" onclick="setDtAgg('${m}')">${{day:'Diario',week:'Semanal',month:'Mensual'}[m]}</button>`).join('')}
       </div>`;
@@ -876,7 +1057,10 @@
           <div class="donut-grid"><div id="dt-origin-v"></div><div id="dt-origin-s"></div></div></div>`;
       }
 
-      document.getElementById('dt-body').innerHTML=html;
+      // Self-report (accountability) — only when an agent is viewing their OWN profile
+      if(isMe&&me.role!=='manager')html+=selfReportCard();
+
+      document.getElementById('main-content').innerHTML=html;
 
       // Charts
       if(typeof ApexCharts==='undefined')return;
