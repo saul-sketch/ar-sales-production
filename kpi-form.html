@@ -61,6 +61,7 @@
     .pill.on.green{background:var(--green);border-color:var(--green);}
     .pill.on.red{background:var(--red);border-color:var(--red);}
     .pill.on.amber{background:var(--yellow);border-color:var(--yellow);}
+    .pill.on.blue{background:var(--blue);border-color:var(--blue);}
     .add-visit{width:100%;padding:13px;border:1.5px dashed var(--gray-300);border-radius:12px;background:white;color:var(--gray-600);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
     .add-visit:hover{border-color:var(--blue);color:var(--blue);}
     /* Confirm + submit */
@@ -211,18 +212,19 @@
     // ===== Visits =====
     // stage = how far the visit got (single funnel selector): came|applied|denied|approved|sold
     const FUNNEL=[['came','Solo vino'],['applied','Aplicó'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
-    // origin = who brought the visit (closers tag this). Order: brought-by-others → self-generated → passive
+    // origin = who brought the visit (closers tag this)
     const ORIGINS=[
-      ['cc','Call Center'],          // a setter booked it
-      ['closer2','Otro closer'],     // another closer brought it
-      ['own','Self-gen'],            // own prospecting
-      ['ref_self','Mi referido'],    // referral he worked (calling past clients)
-      ['ref_direct','Referido directo'], // referral walked in, no heads-up
-      ['walkin','Walk-in']           // cold, no appointment
+      ['cc','Call Center'],            // a setter booked it
+      ['closer2','Otro closer'],       // another closer brought it
+      ['own','Self-gen'],              // he generated it → needs a source below
+      ['ref_direct','Referido directo'], // a referral walked in, no heads-up (not worked by him)
+      ['walkin','Walk-in']             // cold, no appointment
     ];
-    function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',stage:null});renderVisits();}
+    // When origin = Self-gen, where did the lead come from
+    const SELFGEN_SOURCES=[['marketplace','Marketplace'],['fb_ads','Facebook Ads'],['crm','CRM recuperado'],['referido','Referido']];
+    function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',source:null,stage:null});renderVisits();}
     function removeVisit(i){visits.splice(i,1);renderVisits();}
-    function setV(i,k,val){visits[i][k]=val;renderVisits();}
+    function setV(i,k,val){visits[i][k]=val;if(k==='origin'&&val!=='own')visits[i].source=null;renderVisits();}
 
     function renderVisits(){
       const host=document.getElementById('visits-list');
@@ -231,10 +233,14 @@
           <div class="vrow"><span class="field-lbl">Origen</span><div class="pills">
             ${ORIGINS.map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
           </div></div>`:'';
+        const sourceRow=(me.role==='closer'&&v.origin==='own')?`
+          <div class="vrow"><span class="field-lbl">Fuente</span><div class="pills">
+            ${SELFGEN_SOURCES.map(([k,l])=>`<button class="pill ${v.source===k?'on blue':''}" onclick="setV(${i},'source','${k}')">${l}</button>`).join('')}
+          </div></div>`:'';
         return `<div class="visit">
           <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
           <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
-          ${originRow}
+          ${originRow}${sourceRow}
           <div class="vrow"><span class="field-lbl">Llegó a</span><div class="pills">
             ${FUNNEL.map(([k,l])=>{const cls=v.stage===k?(k==='denied'?'on red':k==='came'?'on':'on green'):'';return `<button class="pill ${cls}" onclick="setV(${i},'stage','${k}')">${l}</button>`;}).join('')}
           </div></div>
