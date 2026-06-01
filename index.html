@@ -224,7 +224,7 @@
 
     let me={name:null,email:null,role:null}; // role: manager|closer|setter
     let allReports=[];
-    let filterPeriod='30',filterLoc='all';
+    let filterPeriod='mtd',filterLoc='all'; // default = THIS MONTH (sales goals are monthly, not rolling 30d)
     let lbTab='closer',lbSort={key:'sold',dir:-1};
     let view='global';          // global | setters | closers | recon | profile
     let profileCtx=null;        // {name, facet}
@@ -236,14 +236,23 @@
     let prevView='global';
     function navigate(v,ctx){if(v==='profile'&&view!=='profile')prevView=view;view=v;if(v==='profile'&&ctx)profileCtx=ctx;closeSidebar();render();window.scrollTo(0,0);}
     function goProfile(name,facet){navigate('profile',{name,facet});}
-    async function setPeriod(p){filterPeriod=p;renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
+    // Pick a sensible temporal breakdown for the current period (so a profile opened
+    // under "this month" shows that month by week, a short range by day, etc).
+    function aggForPeriod(){
+      if(filterPeriod.startsWith('last:'))return +filterPeriod.slice(5)<=14?'day':'week';
+      if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');const days=(new Date(p[2])-new Date(p[1]))/86400000+1;return days<=14?'day':days<=92?'week':'month';}
+      if(/^\d{4}-\d{2}$/.test(filterPeriod)||filterPeriod==='mtd'||filterPeriod==='qtd')return 'week';
+      return 'month';
+    }
+    async function setPeriod(p){filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
     function setLoc(l){filterLoc=l;render();}
     function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
     // Top period bar: quick day-ranges + custom from/to
+    function prevMonthKey(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
     function renderPeriodBar(){
       const bar=document.getElementById('period-bar');if(!bar)return;
-      const quick=[{p:'last:1',lbl:'Hoy'},{p:'last:3',lbl:'3 días'},{p:'last:7',lbl:'7 días'},{p:'last:14',lbl:'14 días'},{p:'30',lbl:'30 días'}];
+      const quick=[{p:'last:1',lbl:'Hoy'},{p:'last:3',lbl:'3 días'},{p:'last:7',lbl:'7 días'},{p:'mtd',lbl:'Este mes'},{p:prevMonthKey(),lbl:'Mes pasado'}];
       const chips=quick.map(q=>`<button class="pb-chip ${filterPeriod===q.p?'active':''}" onclick="setPeriod('${q.p}')">${q.lbl}</button>`).join('');
       const isRange=filterPeriod.startsWith('range:');const rp=isRange?filterPeriod.split(':'):['','',''];
       bar.innerHTML=`
@@ -347,6 +356,13 @@
         allReports=await rRes.json();
         const agents=await aRes.json();
         window._agents=agents;
+        // First load: if THIS month has no activity yet (e.g. day 1), show the latest month WITH data
+        if(!window._periodInit){
+          window._periodInit=true;
+          const now=new Date(),tm=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+          const hasThisMonth=allReports.some(r=>r.date&&String(r.date).slice(0,7)===tm);
+          if(filterPeriod==='mtd'&&!hasThisMonth){const ms=availableMonths();if(ms.length){filterPeriod=ms[0];dtAgg=aggForPeriod();}}
+        }
         window._agentNames={};agents.forEach(a=>{if(a.name)window._agentNames[a.name.toLowerCase()]=a.name;});
         window._mapping=await mRes.json();
         window._selfReports=await srRes.json();
@@ -512,7 +528,7 @@
         return `<button class="nav-item ${active?'active':''}" onclick="${click}"><span class="ico">${n.ico}</span>${n.lbl}</button>`;
       }).join('');
       const months=availableMonths();
-      const quickP=[{p:'30',lbl:'Últimos 30 días'},{p:'mtd',lbl:'Mes actual'},{p:'qtd',lbl:'Trimestre'},{p:'all',lbl:'Todo el tiempo'}];
+      const quickP=[{p:'mtd',lbl:'Este mes'},{p:'qtd',lbl:'Trimestre'},{p:'all',lbl:'Todo el tiempo'}];
       const quickHtml=quickP.map(x=>`<button class="period-item ${filterPeriod===x.p?'active':''}" onclick="setPeriod('${x.p}')">${x.lbl}</button>`).join('');
       const showMonths=monthsExpanded||/^\d{4}-\d{2}$/.test(filterPeriod);
       const monthsHtml=`<button class="period-item" style="font-weight:800;display:flex;justify-content:space-between;align-items:center;" onclick="monthsExpanded=!monthsExpanded;renderSidebar();"><span>📅 Por mes</span><span style="color:var(--gray-400);">${showMonths?'▾':'▸'}</span></button>
@@ -944,11 +960,18 @@
       if(dtAgg==='week')return isoWeekKey(dateISO);
       return dateISO.slice(0,7); // month YYYY-MM
     }
+    // Monday (start) of ISO week w in year y
+    function isoWeekStart(y,w){
+      const jan4=new Date(y,0,4);
+      const jan4Mon=new Date(jan4);jan4Mon.setDate(jan4.getDate()-((jan4.getDay()+6)%7));
+      const s=new Date(jan4Mon);s.setDate(jan4Mon.getDate()+(w-1)*7);return s;
+    }
     function periodNice(key){
-      const mn=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-      if(dtAgg==='day'){const[y,m,d]=key.split('-');return `${d}/${m}`;}
-      if(dtAgg==='week'){const[y,w]=key.split('-S');return `S${w} '${y.slice(2)}`;}
-      const[y,m]=key.split('-');return `${mn[+m-1]} '${y.slice(2)}`;
+      const mn=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+      if(dtAgg==='day'){const[y,m,d]=key.split('-');return `${+d} ${mn[+m-1]}`;}
+      if(dtAgg==='week'){const[y,w]=key.split('-S');const s=isoWeekStart(+y,+w);const e=new Date(s);e.setDate(e.getDate()+6);
+        return s.getMonth()===e.getMonth()?`${s.getDate()}–${e.getDate()} ${mn[e.getMonth()]}`:`${s.getDate()} ${mn[s.getMonth()]}–${e.getDate()} ${mn[e.getMonth()]}`;}
+      const[y,m]=key.split('-');return `${mn[+m-1].charAt(0).toUpperCase()+mn[+m-1].slice(1)} '${y.slice(2)}`;
     }
 
     // Build a closer/setter detail dataset (facet) with temporal series + origin
