@@ -46,15 +46,17 @@
     .num-input{width:84px;padding:11px;border:1.5px solid var(--gray-300);border-radius:11px;font-size:18px;font-weight:700;text-align:center;font-family:inherit;color:var(--gray-900);}
     .num-input:focus{outline:none;border-color:var(--blue);}
     /* Visit cards */
-    .visit{border:1.5px solid var(--gray-200);border-radius:13px;padding:14px;margin-bottom:12px;position:relative;background:var(--gray-50);}
-    .visit .vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
-    .visit .vnum{font-size:12px;font-weight:800;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px;}
-    .visit .vremove{background:none;border:none;color:var(--red);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
-    .txt-input{width:100%;padding:10px 12px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:10px;}
+    .visit{border:1.5px solid var(--gray-200);border-radius:12px;padding:11px 12px;margin-bottom:10px;position:relative;background:var(--gray-50);}
+    .visit .vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+    .visit .vnum{font-size:11px;font-weight:800;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px;}
+    .visit .vremove{background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .txt-input{width:100%;padding:9px 11px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:9px;}
     .txt-input:focus{outline:none;border-color:var(--blue);}
-    .field-lbl{font-size:12px;font-weight:700;color:var(--gray-600);margin-bottom:6px;display:block;}
-    .pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
-    .pill{padding:8px 13px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;}
+    .vrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+    .vrow:last-child{margin-bottom:0;}
+    .field-lbl{font-size:10.5px;font-weight:800;color:var(--gray-500);width:52px;flex-shrink:0;text-transform:uppercase;letter-spacing:.3px;}
+    .pills{display:flex;gap:5px;flex-wrap:wrap;flex:1;}
+    .pill{padding:6px 11px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;}
     .pill.on{background:var(--primary);color:white;border-color:var(--primary);}
     .pill.on.green{background:var(--green);border-color:var(--green);}
     .pill.on.red{background:var(--red);border-color:var(--red);}
@@ -214,31 +216,27 @@
     function renderVisits(){
       const host=document.getElementById('visits-list');
       host.innerHTML=visits.map((v,i)=>{
-        const originBlock=me.role==='closer'?`
-          <span class="field-lbl">¿De dónde vino?</span>
-          <div class="pills">
+        const originRow=me.role==='closer'?`
+          <div class="vrow"><span class="field-lbl">Origen</span><div class="pills">
             ${[['own','Propia'],['walkin','Walk-in'],['cc','Call Center']].map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
-          </div>`:'';
+          </div></div>`:'';
         return `<div class="visit">
-          <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕ quitar</button>`:''}</div>
+          <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
           <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
-          ${originBlock}
-          <span class="field-lbl">¿Aplicó a crédito?</span>
-          <div class="pills">
+          ${originRow}
+          <div class="vrow"><span class="field-lbl">Aplicó</span><div class="pills">
             <button class="pill ${v.applied===true?'on green':''}" onclick="setV(${i},'applied',true)">Sí</button>
             <button class="pill ${v.applied===false?'on red':''}" onclick="setV(${i},'applied',false)">No</button>
-          </div>
-          <span class="field-lbl">¿Crees que aprobó?</span>
-          <div class="pills">
+          </div></div>
+          <div class="vrow"><span class="field-lbl">Resultado</span><div class="pills">
             <button class="pill ${v.approvedGuess==='approved'?'on green':''}" onclick="setV(${i},'approvedGuess','approved')">Aprobó</button>
             <button class="pill ${v.approvedGuess==='denied'?'on red':''}" onclick="setV(${i},'approvedGuess','denied')">Negó</button>
-            <button class="pill ${v.approvedGuess==='pending'?'on amber':''}" onclick="setV(${i},'approvedGuess','pending')">Pendiente</button>
-          </div>
-          <span class="field-lbl">¿Crees que se vendió?</span>
-          <div class="pills">
+            <button class="pill ${v.approvedGuess==='pending'?'on amber':''}" onclick="setV(${i},'approvedGuess','pending')">Pend.</button>
+          </div></div>
+          <div class="vrow"><span class="field-lbl">Vendió</span><div class="pills">
             <button class="pill ${v.soldGuess===true?'on green':''}" onclick="setV(${i},'soldGuess',true)">Sí</button>
             <button class="pill ${v.soldGuess===false?'on red':''}" onclick="setV(${i},'soldGuess',false)">No</button>
-          </div>
+          </div></div>
         </div>`;
       }).join('');
     }
