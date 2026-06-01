@@ -301,6 +301,23 @@
       const k=(name||'').toLowerCase();
       return (window._dialerByAgent&&window._dialerByAgent[k])||{calls:0,appointments:0};
     }
+    // Per-agent appointment STATUS from the GHL calendar (showed/noshow/cancelled…),
+    // summed over the selected period from the daily reconciliation (ar_reconciliation_daily).
+    // This is the REAL calendar outcome, not the report-derived show rate.
+    function apptStatusFor(name){
+      const k=(name||'').toLowerCase();
+      const agg={showed:0,noshow:0,cancelled:0,confirmed:0,new:0,invalid:0,other:0,total:0};
+      (window._recon||[]).forEach(r=>{
+        if(!inPeriod(r.recon_date))return;
+        const d=((r.detail||{}).by_agent_status||{})[k];
+        if(!d)return;
+        Object.keys(agg).forEach(f=>agg[f]+=d[f]||0);
+      });
+      return agg;
+    }
+    // Real GHL show rate = showed / (appointments that already had an outcome).
+    // Pending ones (confirmed/new = future) are excluded from the denominator.
+    function ghlShowRate(st){const decided=(st.showed||0)+(st.noshow||0)+(st.cancelled||0)+(st.invalid||0);return decided>0?st.showed/decided*100:0;}
 
     function bindFilters(){
       document.querySelectorAll('#period-filter .filter-tab').forEach(b=>b.addEventListener('click',()=>{
@@ -774,6 +791,20 @@
         <div class="avg-card"><div class="v">${(d.tot.sold/nP).toFixed(1)}</div><div class="k">Ventas/${avgLbl}</div></div>
         <div class="avg-card"><div class="v" style="color:var(--green);">${fmtMoney(d.tot.profit)}</div><div class="k">Monto total</div></div>
       </div>`;
+
+      // GHL appointment status — the REAL calendar outcome of this agent's appointments
+      const st=apptStatusFor(name);
+      if(st.total>0){
+        const sr=ghlShowRate(st),decided=st.showed+st.noshow+st.cancelled+st.invalid,pending=(st.confirmed||0)+(st.new||0);
+        html+=`<div class="section-card"><h3>Estatus de citas <span class="tag prospect">GHL</span></h3>
+          <p class="section-sub">Resultado real del calendario de GHL · ${st.total} cita${st.total===1?'':'s'} en el período</p>
+          <div class="conv-grid">
+            <div class="conv-chip"><div class="pct ${pctCls(sr,60,40)}">${sr.toFixed(0)}%</div><div class="lbl">Show rate real</div><div class="num">${st.showed}/${decided}</div></div>
+            <div class="conv-chip"><div class="pct" style="color:var(--green);">${st.showed}</div><div class="lbl">Llegaron</div><div class="num">showed</div></div>
+            <div class="conv-chip"><div class="pct" style="color:var(--red);">${st.noshow}</div><div class="lbl">No llegaron</div><div class="num">no-show</div></div>
+            <div class="conv-chip"><div class="pct" style="color:var(--gray-500);">${st.cancelled}</div><div class="lbl">Canceladas${pending>0?' · '+pending+' pend.':''}</div><div class="num">cancel</div></div>
+          </div></div>`;
+      }
 
       // Conversions
       html+=`<div class="section-card"><h3>Conversiones</h3>

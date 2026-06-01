@@ -37,14 +37,45 @@ def http_get(url, headers):
     with urllib.request.urlopen(req, timeout=90) as r:
         return json.loads(r.read())
 
-def cal_showed(day):
+STATUSES = ("showed", "noshow", "cancelled", "confirmed", "new", "invalid")
+
+def load_mapping():
+    """dialer_user_id (GHL assignedUserId) → sales_report_name, from Supabase."""
+    url = f"{SUPA}/rest/v1/ar_agent_mapping?select=dialer_user_id,sales_report_name"
+    data = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}"})
+    return {m["dialer_user_id"]: m["sales_report_name"]
+            for m in data if m.get("dialer_user_id") and m.get("sales_report_name")}
+
+def cal_appts(day):
+    """All calendar events happening on `day` (raw) — one fetch, reused for both
+    the showed-reconciliation and the per-agent status breakdown."""
     url = f"{BRIDGE}/appointments?from={day}&to={day}&by=startTime&withPhone=true&loc={AR_LOC}"
-    data = http_get(url, {"X-Service-Token": SERVICE_TOKEN})
+    return http_get(url, {"X-Service-Token": SERVICE_TOKEN}).get("appointments", [])
+
+def showed_by_phone(appts):
+    """phone → {title, agent} for SHOWED appts (for the visit reconciliation)."""
     out = {}
-    for a in data.get("appointments", []):
+    for a in appts:
         if (a.get("status") or "").lower() != "showed": continue
         ph = phone(a.get("contactPhone"))
         if ph: out[ph] = {"title": a.get("title"), "agent": a.get("assignedUserId")}
+    return out
+
+def status_by_agent(appts, uid2name):
+    """sales_report_name(lower) → {showed,noshow,cancelled,confirmed,new,invalid,other,total}.
+    Straight from the GHL calendar status of each appointment, grouped by assigned agent.
+    Agents without a Sales-Report mapping are keyed 'uid:<id>' so nothing is lost."""
+    out = {}
+    for a in appts:
+        uid = a.get("assignedUserId")
+        if not uid: continue
+        name = uid2name.get(uid)
+        key = name.lower() if name else f"uid:{uid}"
+        st = (a.get("status") or "unknown").lower()
+        d = out.setdefault(key, {s: 0 for s in STATUSES} | {"other": 0, "total": 0})
+        d["total"] += 1
+        if st in STATUSES: d[st] += 1
+        else: d["other"] += 1
     return out
 
 def sr_visits(day):
@@ -74,12 +105,15 @@ def main():
     # When run live, derive from system:
     try: today = datetime.date.today()
     except Exception: pass
-    print(f"Reconciliando {days_back} días (ayer → atrás)\n")
+    uid2name = load_mapping()
+    print(f"Reconciliando {days_back} días (ayer → atrás) · {len(uid2name)} agentes mapeados\n")
     print(f"{'Fecha':12s} {'Showed':>6s} {'Report':>6s} {'Match':>5s} {'CalSolo':>7s} {'RepSolo':>7s} {'Match%':>6s}")
     for i in range(1, days_back+1):
         day = (today - datetime.timedelta(days=i)).isoformat()
         try:
-            cal = cal_showed(day)
+            appts = cal_appts(day)
+            cal = showed_by_phone(appts)
+            by_agent = status_by_agent(appts, uid2name)
             sr = sr_visits(day)
             cset, sset = set(cal), set(sr)
             matched = cset & sset
@@ -89,6 +123,7 @@ def main():
             detail = {
                 "calendar_only": [{"phone": p[-4:], **cal[p]} for p in cal_only],
                 "report_only":   [{"phone": p[-4:], **sr[p]} for p in rep_only],
+                "by_agent_status": by_agent,
             }
             upsert({"recon_date": day, "showed_count": len(cal), "reported_count": len(sr),
                     "matched": len(matched), "calendar_only": len(cal_only),
