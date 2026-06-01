@@ -55,9 +55,14 @@
     .vrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
     .vrow:last-child{margin-bottom:0;}
     .field-lbl{font-size:10.5px;font-weight:800;color:var(--gray-500);width:52px;flex-shrink:0;text-transform:uppercase;letter-spacing:.3px;}
-    .pills{display:flex;gap:5px;flex:1;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-    .pills::-webkit-scrollbar{display:none;}
-    .pill{padding:6px 11px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;white-space:nowrap;flex-shrink:0;}
+    .pills{display:flex;gap:5px;flex:1;min-width:0;flex-wrap:wrap;}
+    .pill{padding:6px 11px;border:1.5px solid var(--gray-300);border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--gray-600);font-family:inherit;transition:all .12s;white-space:nowrap;}
+    /* Dropdown selectors (everything fits in one line, no horizontal scroll) */
+    .vsel{flex:1;min-width:0;padding:9px 30px 9px 12px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:13.5px;font-weight:700;font-family:inherit;color:var(--gray-800);cursor:pointer;-webkit-appearance:none;appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'><path d='M1 1l4.5 4.5L10 1' stroke='%2364748b' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>") no-repeat right 11px center;}
+    .vsel:focus{outline:none;border-color:var(--blue);}
+    .vsel.good{color:var(--green);border-color:var(--green);background-color:#f0fdf4;}
+    .vsel.bad{color:var(--red);border-color:var(--red);background-color:#fef2f2;}
+    .vsel.set{border-color:var(--gray-400);}
     .pill.on{background:var(--primary);color:white;border-color:var(--primary);}
     .pill.on.green{background:var(--green);border-color:var(--green);}
     .pill.on.red{background:var(--red);border-color:var(--red);}
@@ -218,11 +223,11 @@
       ['cc','Call Center'],            // a setter booked it
       ['closer2','Otro closer'],       // another closer brought it
       ['own','Self-gen'],              // he generated it → needs a source below
-      ['ref_direct','Ref. directo'],   // a referral walked in, no heads-up (not worked by him)
+      ['ref_direct','Referido directo'], // a referral walked in, no heads-up (not worked by him)
       ['walkin','Walk-in']             // cold, no appointment
     ];
     // When origin = Self-gen, where did the lead come from
-    const SELFGEN_SOURCES=[['marketplace','Marketplace'],['fb_ads','FB Ads'],['crm','CRM recup.'],['referido','Referido']];
+    const SELFGEN_SOURCES=[['marketplace','Marketplace'],['fb_ads','Facebook Ads'],['crm','CRM recuperado'],['referido','Referido']];
     function addVisit(){visits.push({client:'',origin:me.role==='closer'?'':'brought',source:null,stage:null});renderVisits();}
     function removeVisit(i){visits.splice(i,1);renderVisits();}
     function setV(i,k,val){visits[i][k]=val;if(k==='origin'&&val!=='own')visits[i].source=null;renderVisits();}
@@ -230,21 +235,15 @@
     function renderVisits(){
       const host=document.getElementById('visits-list');
       host.innerHTML=visits.map((v,i)=>{
-        const originRow=me.role==='closer'?`
-          <div class="vrow"><span class="field-lbl">Origen</span><div class="pills">
-            ${ORIGINS.map(([k,l])=>`<button class="pill ${v.origin===k?'on':''}" onclick="setV(${i},'origin','${k}')">${l}</button>`).join('')}
-          </div></div>`:'';
-        const sourceRow=(me.role==='closer'&&v.origin==='own')?`
-          <div class="vrow"><span class="field-lbl">Fuente</span><div class="pills">
-            ${SELFGEN_SOURCES.map(([k,l])=>`<button class="pill ${v.source===k?'on blue':''}" onclick="setV(${i},'source','${k}')">${l}</button>`).join('')}
-          </div></div>`:'';
+        const sel=(field,opts,ph)=>`<select class="vsel ${v[field]?'set':''}" onchange="setV(${i},'${field}',this.value)"><option value="">${ph}</option>${opts.map(([k,l])=>`<option value="${k}" ${v[field]===k?'selected':''}>${l}</option>`).join('')}</select>`;
+        const originRow=me.role==='closer'?`<div class="vrow"><span class="field-lbl">Origen</span>${sel('origin',ORIGINS,'— elegir —')}</div>`:'';
+        const sourceRow=(me.role==='closer'&&v.origin==='own')?`<div class="vrow"><span class="field-lbl">Fuente</span>${sel('source',SELFGEN_SOURCES,'— fuente —')}</div>`:'';
+        const stageCls=(v.stage==='sold'||v.stage==='approved')?'good':(v.stage==='denied'?'bad':(v.stage?'set':''));
+        const stageRow=`<div class="vrow"><span class="field-lbl">Llegó a</span><select class="vsel ${stageCls}" onchange="setV(${i},'stage',this.value)"><option value="">— elegir —</option>${FUNNEL.map(([k,l])=>`<option value="${k}" ${v.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>`;
         return `<div class="visit">
           <div class="vhead"><span class="vnum">Visita ${i+1}</span>${visits.length>1?`<button class="vremove" onclick="removeVisit(${i})">✕</button>`:''}</div>
           <input class="txt-input" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="visits[${i}].client=this.value">
-          ${originRow}${sourceRow}
-          <div class="vrow"><span class="field-lbl">Llegó a</span><div class="pills">
-            ${FUNNEL.map(([k,l])=>{const cls=v.stage===k?(k==='denied'?'on red':k==='came'?'on':'on green'):'';return `<button class="pill ${cls}" onclick="setV(${i},'stage','${k}')">${l}</button>`;}).join('')}
-          </div></div>
+          ${originRow}${sourceRow}${stageRow}
         </div>`;
       }).join('');
     }
