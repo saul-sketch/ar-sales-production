@@ -104,6 +104,29 @@
     .tabs{display:inline-flex;background:var(--gray-100);border-radius:11px;padding:4px;margin-bottom:12px;gap:2px;}
     .tab{padding:8px 16px;font-size:13px;font-weight:700;border-radius:8px;cursor:pointer;color:var(--gray-500);border:none;background:transparent;font-family:inherit;transition:all .15s;}
     .tab.active{background:var(--primary);color:white;}
+    /* Detail drawer */
+    .detail-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:flex-end;justify-content:center;}
+    .detail-overlay.show{display:flex;}
+    .detail-drawer{background:var(--gray-50);width:100%;max-width:760px;max-height:92vh;border-radius:20px 20px 0 0;overflow-y:auto;animation:slideUp .25s ease;}
+    @media(min-width:768px){.detail-overlay{align-items:center;}.detail-drawer{border-radius:20px;max-height:88vh;}}
+    @keyframes slideUp{from{transform:translateY(40px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+    .detail-head{padding:18px 22px;background:white;border-bottom:1px solid var(--gray-200);position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;}
+    .detail-head .nm{font-size:19px;font-weight:800;}
+    .detail-head .rl{font-size:12px;color:var(--gray-500);font-weight:600;}
+    .detail-close{background:var(--gray-100);border:none;border-radius:9px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+    .detail-body{padding:16px 18px 32px;}
+    .mode-toggle{display:inline-flex;background:white;border:1px solid var(--gray-200);border-radius:10px;padding:3px;margin-bottom:14px;}
+    .clickable-row{cursor:pointer;}
+    .clickable-row:hover{background:var(--gray-50)!important;}
+    .avg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px;}
+    .avg-card{background:white;border:1px solid var(--gray-200);border-radius:11px;padding:12px 14px;}
+    .avg-card .v{font-size:22px;font-weight:800;line-height:1;}
+    .avg-card .k{font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:600;}
+    .donut-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+    @media(min-width:560px){.donut-grid{grid-template-columns:1fr 1fr;}}
+    .hero-cta{margin-top:14px;width:100%;padding:11px;background:rgba(255,255,255,.14);color:white;border:1px solid rgba(255,255,255,.25);border-radius:11px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;}
+    .hero-cta:hover{background:rgba(255,255,255,.22);}
+
     @media(max-width:640px){
       .hero-kpis{grid-template-columns:repeat(2,1fr);}
       .funnel-stage{grid-template-columns:96px 1fr 54px;}
@@ -153,6 +176,17 @@
 
       <div id="personal"></div>
       <div id="leaderboards"></div>
+    </div>
+  </div>
+
+  <!-- Agent detail drawer -->
+  <div class="detail-overlay" id="detail-overlay" onclick="if(event.target.id==='detail-overlay')closeDetail()">
+    <div class="detail-drawer">
+      <div class="detail-head">
+        <div><div class="nm" id="dt-name">—</div><div class="rl" id="dt-role">—</div></div>
+        <button class="detail-close" onclick="closeDetail()">Cerrar</button>
+      </div>
+      <div class="detail-body" id="dt-body"></div>
     </div>
   </div>
 
@@ -320,6 +354,7 @@
             <div class="hero-stat"><div class="v">${primary.approved}</div><div class="k">Aprobados</div><div class="c">${pct(primary.approved,primary.applied).toFixed(0)}%</div></div>
             <div class="hero-stat"><div class="v" style="color:#34d399;">${fmtShare(primary.sold)}</div><div class="k">Ventas</div><div class="c">${pct(primary.sold,primary.approved).toFixed(0)}% cierre</div></div>
           </div>
+          <button class="hero-cta" onclick="openMyDetail()">Ver mi producción completa →</button>
         </div>`;
 
       // CLOSER → cierre funnel + prospección propia
@@ -427,10 +462,11 @@
       const body=sorted.length?sorted.map((a,i)=>{
         const isMe=a.name.toLowerCase()===me.name.toLowerCase();
         const rc=i===0?'top1':i===1?'top2':i===2?'top3':'';
+        const clickAttr=`onclick="openAgentDetail('${escapeAttr(a.name)}','${lbTab}')"`;
         if(lbTab==='closer'){
-          return `<tr class="${isMe?'me':''}"><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${fmtShare(a.sold)}</td><td class="pct ${pctCls(a.ap2s,75,50)}">${a.ap2s.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtShare(a.selfgen)}</td><td>${fmtMoney(a.profit)}</td></tr>`;
+          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${fmtShare(a.sold)}</td><td class="pct ${pctCls(a.ap2s,75,50)}">${a.ap2s.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtShare(a.selfgen)}</td><td>${fmtMoney(a.profit)}</td></tr>`;
         }else{
-          return `<tr class="${isMe?'me':''}"><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2a,60,40)}">${a.v2a.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td></tr>`;
+          return `<tr class="clickable-row ${isMe?'me':''}" ${clickAttr}><td class="rank-num ${rc}">${i+1}</td><td class="agent-name-cell">${escapeHtml(a.name)}${isMe?' 👈':''}</td><td>${a.visits}</td><td>${a.applied}</td><td>${a.approved}</td><td class="val-strong">${a.sold}</td><td class="pct ${pctCls(a.v2a,60,40)}">${a.v2a.toFixed(0)}%</td><td class="pct ${pctCls(a.v2s,20,10)}">${a.v2s.toFixed(0)}%</td><td>${fmtMoney(a.profit)}</td></tr>`;
         }
       }).join(''):`<tr><td class="empty" colspan="10">Sin datos en este periodo</td></tr>`;
 
@@ -448,7 +484,7 @@
       // Top-10 sales chart
       const top=sorted.slice(0,10);
       if(top.length&&typeof ApexCharts!=='undefined'){
-        _chartQueue.push({id:'lb-chart',opts:{
+        mountChart('lb-chart',{
           chart:{type:'bar',height:Math.max(180,top.length*30+40),toolbar:{show:false},fontFamily:'inherit'},
           series:[{name:'Ventas',data:top.map(a=>+(a.sold).toFixed(1))}],
           xaxis:{categories:top.map(a=>a.name)},
@@ -456,11 +492,201 @@
           colors:['#3b82f6','#10b981','#f59e0b','#8b5cf6','#e94560','#06b6d4','#f97316','#84cc16','#ec4899','#a855f7'],
           dataLabels:{enabled:true,style:{colors:['#1a1a2e'],fontWeight:700},offsetX:18},
           legend:{show:false},grid:{borderColor:'#e5e7eb',strokeDashArray:3}
-        }});
-        drawQueuedCharts();
+        });
       }
     }
 
+    // ===== AGENT DETAIL DRILL-DOWN =====
+    let dtAgg='week'; // day | week | month
+    let dtContext=null; // {name, facet}
+
+    function openAgentDetail(name,lbTabOrFacet){
+      // facet: 'close' for closers leaderboard, 'prospect' for setters
+      const facet=lbTabOrFacet==='setter'?'prospect':lbTabOrFacet==='closer'?'close':lbTabOrFacet;
+      dtContext={name,facet};
+      document.getElementById('detail-overlay').classList.add('show');
+      renderAgentDetail();
+    }
+    function openMyDetail(){
+      const facet=(me.role==='closer')?'close':'prospect';
+      openAgentDetail(me.name,facet);
+    }
+    function closeDetail(){document.getElementById('detail-overlay').classList.remove('show');dtContext=null;}
+    function setDtAgg(m){dtAgg=m;renderAgentDetail();}
+
+    function isoWeekKey(dateISO){
+      const d=new Date(dateISO+'T00:00:00');
+      const day=(d.getDay()+6)%7; // Mon=0
+      d.setDate(d.getDate()-day+3);
+      const firstThu=new Date(d.getFullYear(),0,4);
+      const week=1+Math.round(((d-firstThu)/86400000-3+((firstThu.getDay()+6)%7))/7);
+      return `${d.getFullYear()}-S${String(week).padStart(2,'0')}`;
+    }
+    function periodKey(dateISO){
+      if(dtAgg==='day')return dateISO;
+      if(dtAgg==='week')return isoWeekKey(dateISO);
+      return dateISO.slice(0,7); // month YYYY-MM
+    }
+    function periodNice(key){
+      const mn=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+      if(dtAgg==='day'){const[y,m,d]=key.split('-');return `${d}/${m}`;}
+      if(dtAgg==='week'){const[y,w]=key.split('-S');return `S${w} '${y.slice(2)}`;}
+      const[y,m]=key.split('-');return `${mn[+m-1]} '${y.slice(2)}`;
+    }
+
+    // Build a closer/setter detail dataset (facet) with temporal series + origin
+    function buildAgentDetail(name,facet){
+      const reports=allReports.filter(r=>inPeriod(r.date)&&(filterLoc==='all'||r.location===filterLoc));
+      const ln=name.toLowerCase();
+      const byPeriod={}; // key -> {visits,applied,approved,sold}
+      const origin={visits:{cc:0,own:0,walk:0,other:0},sold:{cc:0,own:0,walk:0,other:0}};
+      const tot={visits:0,applied:0,approved:0,sold:0,profit:0};
+      const eP=k=>byPeriod[k]||(byPeriod[k]={visits:0,applied:0,approved:0,sold:0});
+
+      reports.forEach(r=>{
+        (r.visits||[]).forEach(v=>{
+          const setter=clean(v.setter),c1=clean(v.closer),c2=clean(v.closer2);
+          const sb=v.scheduled_by, selfgen=sb==='Self-gen'||v.subgen===true;
+          let mine=false, soldShare=0;
+          if(facet==='close'){
+            const isC1=c1&&c1.toLowerCase()===ln, isC2=c2&&c2.toLowerCase()===ln;
+            if(isC1||isC2){mine=true;
+              if(v.sale===true)soldShare=(c1&&c2)?0.5:1;}
+          }else{ // prospect
+            let prospector=setter||(selfgen&&c1?c1:null);
+            if(prospector&&prospector.toLowerCase()===ln){mine=true;if(v.sale===true)soldShare=1;}
+          }
+          if(!mine)return;
+          const k=periodKey(r.date);const p=eP(k);
+          p.visits++;tot.visits++;
+          if(v.applied===true){p.applied++;tot.applied++;}
+          if(v.result==='approved'){p.approved++;tot.approved++;}
+          if(v.sale===true){p.sold+=soldShare;tot.sold+=soldShare;tot.profit+=(soldShare===0.5?(v.net_profit||0)/2:(v.net_profit||0));}
+          // Origin (only meaningful for closer facet — where visits come from)
+          let org=setter?'cc':selfgen?'own':sb==='Walk-in'?'walk':'other';
+          origin.visits[org]++;
+          if(v.sale===true)origin.sold[org]+=soldShare;
+        });
+      });
+      const keys=Object.keys(byPeriod).sort();
+      return {byPeriod,keys,origin,tot};
+    }
+
+    function renderAgentDetail(){
+      if(!dtContext)return;
+      const {name,facet}=dtContext;
+      const d=buildAgentDetail(name,facet);
+      const isClose=facet==='close';
+      document.getElementById('dt-name').textContent=name;
+      document.getElementById('dt-role').textContent=(isClose?'Cierre — visitas atendidas':'Prospección — visitas traídas')+' · '+periodLabel();
+
+      const nP=d.keys.length||1;
+      const avgLbl={day:'día',week:'semana',month:'mes'}[dtAgg];
+      const v2a=pct(d.tot.applied,d.tot.visits),a2ap=pct(d.tot.approved,d.tot.applied),ap2s=pct(d.tot.sold,d.tot.approved),v2s=pct(d.tot.sold,d.tot.visits);
+
+      let html='';
+      // Mode toggle
+      html+=`<div class="mode-toggle">
+        ${['day','week','month'].map(m=>`<button class="filter-tab ${dtAgg===m?'active':''}" onclick="setDtAgg('${m}')">${{day:'Diario',week:'Semanal',month:'Mensual'}[m]}</button>`).join('')}
+      </div>`;
+
+      // Averages
+      html+=`<div class="avg-grid">
+        <div class="avg-card"><div class="v">${(d.tot.visits/nP).toFixed(1)}</div><div class="k">Visitas/${avgLbl}</div></div>
+        <div class="avg-card"><div class="v">${(d.tot.applied/nP).toFixed(1)}</div><div class="k">Aplican/${avgLbl}</div></div>
+        <div class="avg-card"><div class="v">${(d.tot.sold/nP).toFixed(1)}</div><div class="k">Ventas/${avgLbl}</div></div>
+        <div class="avg-card"><div class="v" style="color:var(--green);">${fmtMoney(d.tot.profit)}</div><div class="k">Monto total</div></div>
+      </div>`;
+
+      // Conversions
+      html+=`<div class="section-card"><h3>Conversiones</h3>
+        <div class="conv-grid">
+          <div class="conv-chip"><div class="pct ${pctCls(v2a,60,40)}">${v2a.toFixed(0)}%</div><div class="lbl">Visita → Aplicó</div><div class="num">${d.tot.applied}/${d.tot.visits}</div></div>
+          <div class="conv-chip"><div class="pct ${pctCls(a2ap,45,30)}">${a2ap.toFixed(0)}%</div><div class="lbl">Aplicó → Aprobó</div><div class="num">${d.tot.approved}/${d.tot.applied}</div></div>
+          <div class="conv-chip"><div class="pct ${pctCls(ap2s,75,50)}">${ap2s.toFixed(0)}%</div><div class="lbl">Aprobó → Venta</div><div class="num">${fmtShare(d.tot.sold)}/${d.tot.approved}</div></div>
+          <div class="conv-chip"><div class="pct ${pctCls(v2s,20,10)}">${v2s.toFixed(0)}%</div><div class="lbl">Visita → Venta</div><div class="num">${fmtShare(d.tot.sold)}/${d.tot.visits}</div></div>
+        </div></div>`;
+
+      // Trend chart
+      html+=`<div class="section-card"><h3>Tu evolución (${{day:'por día',week:'por semana',month:'por mes'}[dtAgg]})</h3>
+        <p class="section-sub">Cómo cambia tu producción en el tiempo</p>
+        <div id="dt-trend"></div></div>`;
+
+      // Origin (closer facet only — where visits/sales come from)
+      if(isClose){
+        html+=`<div class="section-card"><h3>De dónde vienen tus visitas y ventas</h3>
+          <p class="section-sub">Call Center (setter) vs Propias (self-gen) vs Walk-in</p>
+          <div class="donut-grid"><div id="dt-origin-v"></div><div id="dt-origin-s"></div></div></div>`;
+      }else{
+        // setter: which closers
+        html+=`<div class="section-card"><h3>A qué closers fueron tus visitas</h3>
+          <div class="donut-grid"><div id="dt-origin-v"></div><div id="dt-origin-s"></div></div></div>`;
+      }
+
+      document.getElementById('dt-body').innerHTML=html;
+
+      // Charts
+      if(typeof ApexCharts==='undefined')return;
+      // Trend
+      const cats=d.keys.map(periodNice);
+      mountChart('dt-trend',{
+        chart:{type:'line',height:250,toolbar:{show:false},fontFamily:'inherit'},
+        series:[
+          {name:'Visitas',type:'column',data:d.keys.map(k=>d.byPeriod[k].visits)},
+          {name:'Ventas',type:'line',data:d.keys.map(k=>+d.byPeriod[k].sold.toFixed(1))}
+        ],
+        stroke:{width:[0,3],curve:'smooth'},colors:['#cbd5e1','#10b981'],
+        xaxis:{categories:cats,labels:{style:{fontSize:'10px'}}},
+        yaxis:[{title:{text:'Visitas',style:{fontSize:'10px'}}},{opposite:true,title:{text:'Ventas',style:{fontSize:'10px'}}}],
+        plotOptions:{bar:{borderRadius:3,columnWidth:'55%'}},markers:{size:4},
+        dataLabels:{enabled:false},legend:{position:'top'},grid:{borderColor:'#e5e7eb',strokeDashArray:3}
+      });
+
+      // Origin donuts
+      if(isClose){
+        const ov=d.origin.visits, os=d.origin.sold;
+        const labels=['Call Center','Propias','Walk-in','Otra'];
+        const vData=[ov.cc,ov.own,ov.walk,ov.other], sData=[os.cc,os.own,os.walk,os.other];
+        const colors=['#3b82f6','#10b981','#f97316','#94a3b8'];
+        donut('dt-origin-v','Visitas por origen',labels,vData,colors);
+        donut('dt-origin-s','Ventas por origen',labels,sData.map(x=>+x.toFixed(1)),colors);
+      }else{
+        // closers for setter
+        const reports=allReports.filter(r=>inPeriod(r.date)&&(filterLoc==='all'||r.location===filterLoc));
+        const cmap={};const ln=name.toLowerCase();
+        reports.forEach(r=>(r.visits||[]).forEach(v=>{
+          const st=clean(v.setter);if(st&&st.toLowerCase()===ln){const c=clean(v.closer)||'Sin asignar';
+            cmap[c]=cmap[c]||{v:0,s:0};cmap[c].v++;if(v.sale===true)cmap[c].s++;}
+        }));
+        const ents=Object.entries(cmap).sort((a,b)=>b[1].v-a[1].v).slice(0,8);
+        donut('dt-origin-v','Visitas por closer',ents.map(e=>e[0]),ents.map(e=>e[1].v),null);
+        donut('dt-origin-s','Ventas por closer',ents.map(e=>e[0]),ents.map(e=>e[1].s),null);
+      }
+    }
+
+    function donut(id,title,labels,data,colors){
+      const el=document.getElementById(id);if(!el)return;
+      const filtered=labels.map((l,i)=>[l,data[i]]).filter(x=>x[1]>0);
+      if(!filtered.length){el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:12px;">${title}: sin datos</div>`;return;}
+      mountChart(id,{
+        chart:{type:'donut',height:240,fontFamily:'inherit'},
+        series:filtered.map(x=>x[1]),labels:filtered.map(x=>x[0]),
+        colors:colors||['#3b82f6','#10b981','#f59e0b','#8b5cf6','#e94560','#06b6d4','#f97316','#94a3b8'],
+        legend:{position:'bottom',fontSize:'11px'},
+        title:{text:title,style:{fontSize:'12px',fontWeight:700,color:'#334155'}},
+        dataLabels:{enabled:true,formatter:(v,o)=>o.w.config.series[o.seriesIndex]},
+        plotOptions:{pie:{donut:{size:'58%'}}}
+      });
+    }
+
+    const _charts={};
+    function mountChart(id,opts){
+      const el=document.getElementById(id);if(!el)return;
+      if(_charts[id]){try{_charts[id].destroy();}catch(e){}}
+      el.innerHTML='';const c=new ApexCharts(el,opts);_charts[id]=c;c.render();
+    }
+
+    function escapeAttr(s){return String(s??'').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
     function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   </script>
 </body>
