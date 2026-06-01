@@ -615,6 +615,39 @@
         <p class="section-sub">Cómo cambia tu producción en el tiempo</p>
         <div id="dt-trend"></div></div>`;
 
+      // Historical grid — period by period with running accumulated total
+      const keysDesc=[...d.keys].reverse(); // most recent first
+      // pre-compute accumulated sales from oldest → newest
+      const acc={};let cV=0,cAp=0,cApr=0,cS=0;
+      d.keys.forEach(k=>{const p=d.byPeriod[k];cV+=p.visits;cAp+=p.applied;cApr+=p.approved;cS+=p.sold;
+        acc[k]={v:cV,ap:cAp,apr:cApr,s:cS};});
+      const histRows=keysDesc.map(k=>{
+        const p=d.byPeriod[k];const a=acc[k];
+        const v2a=pct(p.applied,p.visits),ap2s=pct(p.sold,p.approved),v2s=pct(p.sold,p.visits);
+        return `<tr>
+          <td style="font-weight:700;">${periodNice(k)}</td>
+          <td>—</td><td>—</td>
+          <td>${p.visits}</td><td>${p.applied}</td><td>${p.approved}</td>
+          <td class="val-strong">${fmtShare(p.sold)}</td>
+          <td class="pct ${pctCls(v2a,60,40)}">${v2a.toFixed(0)}%</td>
+          <td class="pct ${pctCls(ap2s,75,50)}">${ap2s.toFixed(0)}%</td>
+          <td class="pct ${pctCls(v2s,20,10)}">${v2s.toFixed(0)}%</td>
+          <td style="color:var(--gray-500);">${fmtShare(a.s)}</td>
+        </tr>`;
+      }).join('');
+      html+=`<div class="section-card"><h3>Histórico ${{day:'diario',week:'semanal',month:'mensual'}[dtAgg]}</h3>
+        <p class="section-sub">Cada ${avgLbl} en detalle · última columna = acumulado de ventas hasta ese ${avgLbl}</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>${dtAgg==='day'?'Día':dtAgg==='week'?'Semana':'Mes'}</th><th>Llam.</th><th>Citas</th><th>Visitas</th><th>Aplic.</th><th>Aprob.</th><th>Ventas</th><th>V→A</th><th>Ap→V</th><th>V→Vta</th><th>Acum.</th></tr></thead>
+          <tbody>${histRows||'<tr><td colspan="11" class="empty">Sin datos</td></tr>'}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--gray-300);font-weight:800;">
+            <td>TOTAL</td><td>—</td><td>—</td><td>${d.tot.visits}</td><td>${d.tot.applied}</td><td>${d.tot.approved}</td><td>${fmtShare(d.tot.sold)}</td>
+            <td class="pct">${v2a.toFixed(0)}%</td><td class="pct">${ap2s.toFixed(0)}%</td><td class="pct">${v2s.toFixed(0)}%</td><td>${fmtMoney(d.tot.profit)}</td>
+          </tr></tfoot>
+        </table></div>
+        <p style="font-size:11px;color:var(--gray-400);margin-top:8px;">Llamadas y Citas se llenan al conectar el WaveDialer</p>
+      </div>`;
+
       // Origin (closer facet only — where visits/sales come from)
       if(isClose){
         html+=`<div class="section-card"><h3>De dónde vienen tus visitas y ventas</h3>
