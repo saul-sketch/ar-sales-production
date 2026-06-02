@@ -180,6 +180,49 @@
       .funnel-stage{grid-template-columns:96px 1fr 54px;}
       .main-content{padding:16px 13px 48px;}
     }
+
+    /* ===== KPI report form (integrated 'Reporte de hoy' view) ===== */
+    .report-btn{padding:8px 13px;background:var(--green);color:white;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;}
+    .report-btn:hover{opacity:.92;}
+    .step-num{width:24px;height:24px;border-radius:8px;background:var(--primary);color:white;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;margin-right:6px;}
+    .stat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--gray-100);}
+    .stat-row:last-child{border-bottom:none;}
+    .stat-row .lbl{font-size:14px;font-weight:600;}
+    .stat-row .lbl small{display:block;font-size:11px;color:var(--gray-400);font-weight:400;margin-top:1px;}
+    .num-input{width:84px;padding:11px;border:1.5px solid var(--gray-300);border-radius:11px;font-size:18px;font-weight:700;text-align:center;font-family:inherit;color:var(--gray-900);}
+    .num-input:focus{outline:none;border-color:var(--blue);}
+    .visit{border:1.5px solid var(--gray-200);border-radius:12px;padding:11px 12px;margin-bottom:10px;background:var(--gray-50);}
+    .visit .vhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+    .visit .vnum{font-size:11px;font-weight:800;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px;}
+    .visit .vremove{background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .txt-input{width:100%;padding:9px 11px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:9px;}
+    .txt-input:focus{outline:none;border-color:var(--blue);}
+    .vrow{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+    .vrow:last-child{margin-bottom:0;}
+    .field-lbl{font-size:10.5px;font-weight:800;color:var(--gray-500);width:52px;flex-shrink:0;text-transform:uppercase;letter-spacing:.3px;}
+    .vsel{flex:1;min-width:0;padding:9px 30px 9px 12px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:13.5px;font-weight:700;font-family:inherit;color:var(--gray-800);cursor:pointer;-webkit-appearance:none;appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'><path d='M1 1l4.5 4.5L10 1' stroke='%2364748b' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>") no-repeat right 11px center;}
+    .vsel:focus{outline:none;border-color:var(--blue);}
+    .vsel.good{color:var(--green);border-color:var(--green);background-color:#f0fdf4;}
+    .vsel.bad{color:var(--red);border-color:var(--red);background-color:#fef2f2;}
+    .vsel.set{border-color:var(--gray-400);}
+    .txt-input.err,.vsel.err{border-color:var(--red)!important;background-color:#fef2f2;}
+    .val-msg{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:14px;display:none;}
+    .val-msg.show{display:block;}
+    .add-visit{width:100%;padding:13px;border:1.5px dashed var(--gray-300);border-radius:12px;background:white;color:var(--gray-600);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
+    .add-visit:hover{border-color:var(--blue);color:var(--blue);}
+    .kpi-btn{width:100%;padding:15px;background:var(--primary);color:white;border:none;border-radius:13px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;margin-bottom:14px;}
+    .kpi-btn:disabled{opacity:.5;}
+    .kpi-btn.green{background:var(--green);}
+    .cmp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--gray-100);}
+    .cmp-row:last-child{border-bottom:none;}
+    .cmp-row .cl{font-size:14px;font-weight:600;}
+    .cmp-vals{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap;justify-content:flex-end;}
+    .cmp-vals .said{color:var(--gray-500);}
+    .cmp-vals .real{font-weight:800;}
+    .cmp-vals .diff{font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;}
+    .diff.ok{background:#d1fae5;color:#065f46;}.diff.off{background:#fee2e2;color:#991b1b;}
+    .pending-note{background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:12px 14px;font-size:12.5px;color:#92400e;margin-top:12px;line-height:1.45;}
+    .hidden{display:none;}
   </style>
 </head>
 <body>
@@ -202,6 +245,7 @@
         <div class="brand-text"><h1>Producción de Ventas</h1><small id="last-refresh">—</small></div>
       </div>
       <div class="header-actions">
+        <button class="report-btn" id="report-btn" style="display:none;" onclick="navigate('report')">📝 Reporte de hoy</button>
         <button class="btn btn-ghost" onclick="refresh()" title="Refrescar">↻</button>
         <div class="user-chip"><span id="user-name">—</span><span class="role-badge" id="user-role">—</span></div>
       </div>
@@ -375,6 +419,8 @@
           const rb=document.getElementById('user-role');rb.textContent=me.role;rb.className='role-badge '+me.role;
           if(view==='profile')profileCtx={name:me.name,facet:me.role==='closer'?'close':'prospect'};
         }
+        // "Reporte de hoy" button only for setters/closers (the ones who fill KPIs)
+        const rbtn=document.getElementById('report-btn');if(rbtn)rbtn.style.display=(me.role==='closer'||me.role==='setter')?'':'none';
         await loadDialer(); // live dialer feed for current period
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
@@ -493,6 +539,7 @@
       destroyCharts();
       renderSidebar();
       renderPeriodBar();
+      if(view==='report'){renderReportForm();return;}
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
       if(view==='setters'){renderRoleView(s,'setter');return;}
@@ -1151,7 +1198,7 @@
       }
 
       // Self-report (accountability) — only when an agent is viewing their OWN profile
-      if(isMe&&me.role!=='manager')html+=selfReportCard();
+      if(isMe&&me.role!=='manager')html+=`<div class="section-card" style="text-align:center;border:1.5px solid #bbf7d0;background:#f0fdf4;"><h3>📝 Tu reporte de hoy</h3><p class="section-sub">Sube tu producción del día (llamadas, contactos, citas y visitas).</p><button class="report-btn" style="font-size:15px;padding:12px 22px;" onclick="navigate('report')">Someter reporte de hoy →</button></div>`;
 
       document.getElementById('main-content').innerHTML=html;
 
@@ -1218,6 +1265,145 @@
     }
     // Destroy all live charts before swapping views (prevents orphaned-chart NaN errors)
     function destroyCharts(){Object.keys(_charts).forEach(id=>{try{_charts[id].destroy();}catch(e){}delete _charts[id];});}
+
+    // ===== KPI report form (integrated 'Reporte de hoy' view) =====
+    let rptVisits=[], rptTruth={calls:null,contacts:null,appointments:null,showed:null}, rptValidate=false;
+    const RPT_FUNNEL=[['came','Solo vino (no aplicó)'],['denied','Negó'],['approved','Aprobó'],['sold','Vendió']];
+    const RPT_ORIGINS=[['cc','Call Center'],['closer2','Otro closer'],['own','Self-gen'],['ref_direct','Referido directo'],['walkin','Walk-in']];
+    const RPT_SOURCES=[['marketplace','Marketplace'],['fb_ads','Facebook Ads'],['crm','CRM recuperado'],['referido','Referido']];
+    function rptAddVisit(){rptVisits.push({client:'',origin:me.role==='closer'?'':'brought',source:null,stage:null});rptRenderVisits();}
+    function rptRemoveVisit(i){rptVisits.splice(i,1);rptRenderVisits();}
+    function rptSetV(i,k,v){rptVisits[i][k]=v;if(k==='origin'&&v!=='own')rptVisits[i].source=null;rptRenderVisits();}
+    function rptErrors(){
+      const errs=[];
+      rptVisits.forEach((v,i)=>{
+        const started=(v.client||'').trim()||v.stage||v.source||(me.role==='closer'&&v.origin);
+        if(!started)return;
+        const m=[];
+        if(!(v.client||'').trim())m.push('cliente');
+        if(me.role==='closer'&&!v.origin)m.push('origen');
+        if(me.role==='closer'&&v.origin==='own'&&!v.source)m.push('fuente');
+        if(!v.stage)m.push('llegó a');
+        if(m.length)errs.push({i,missing:m});
+      });
+      return errs;
+    }
+    function rptRenderVisits(){
+      const host=document.getElementById('visits-list'); if(!host)return;
+      host.innerHTML=rptVisits.map((v,i)=>{
+        const started=(v.client||'').trim()||v.stage||v.source||(me.role==='closer'&&v.origin);
+        const e=cond=>rptValidate&&started&&cond?' err':'';
+        const sel=(field,opts,ph,bad)=>`<select class="vsel ${v[field]?'set':''}${bad}" onchange="rptSetV(${i},'${field}',this.value)"><option value="">${ph}</option>${opts.map(([k,l])=>`<option value="${k}" ${v[field]===k?'selected':''}>${l}</option>`).join('')}</select>`;
+        const originRow=me.role==='closer'?`<div class="vrow"><span class="field-lbl">Origen</span>${sel('origin',RPT_ORIGINS,'— elegir —',e(!v.origin))}</div>`:'';
+        const sourceRow=(me.role==='closer'&&v.origin==='own')?`<div class="vrow"><span class="field-lbl">Fuente</span>${sel('source',RPT_SOURCES,'— fuente —',e(!v.source))}</div>`:'';
+        const stageCls=(v.stage==='sold'||v.stage==='approved')?'good':(v.stage==='denied'?'bad':(v.stage?'set':''));
+        const stageRow=`<div class="vrow"><span class="field-lbl">Llegó a</span><select class="vsel ${stageCls}${e(!v.stage)}" onchange="rptSetV(${i},'stage',this.value)"><option value="">— elegir —</option>${RPT_FUNNEL.map(([k,l])=>`<option value="${k}" ${v.stage===k?'selected':''}>${l}</option>`).join('')}</select></div>`;
+        return `<div class="visit"><div class="vhead"><span class="vnum">Visita ${i+1}</span>${rptVisits.length>1?`<button class="vremove" onclick="rptRemoveVisit(${i})">✕</button>`:''}</div>
+          <input class="txt-input${e(!(v.client||'').trim())}" placeholder="Cliente (nombre o teléfono)" value="${(v.client||'').replace(/"/g,'&quot;')}" oninput="rptVisits[${i}].client=this.value">
+          ${originRow}${sourceRow}${stageRow}</div>`;
+      }).join('');
+      if(rptValidate&&!rptErrors().length){const m=document.getElementById('val-msg');if(m)m.classList.remove('show');}
+    }
+    function rptVal(id){const el=document.getElementById(id);return el&&el.value!==''?parseInt(el.value):null;}
+    function rptConfirm(){
+      rptValidate=true;
+      const errs=rptErrors();
+      if(errs.length){
+        document.getElementById('cmp-card').classList.add('hidden');
+        document.getElementById('btn-submit').classList.add('hidden');
+        rptRenderVisits();
+        const msg=document.getElementById('val-msg');
+        msg.innerHTML=`⚠️ Completa <b>Origen, Fuente y Llegó a</b> en cada visita antes de avanzar (${errs.length} sin completar).`;
+        msg.classList.add('show');
+        const first=document.querySelector('.txt-input.err, .vsel.err'); if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+        return;
+      }
+      document.getElementById('val-msg').classList.remove('show');
+      const realVisits=rptVisits.filter(v=>(v.client||'').trim()).length;
+      const rows=[
+        rptCmpRow('📞 Llamadas',rptVal('d-calls'),rptTruth.calls),
+        rptCmpRow('💬 Contactos +2min',rptVal('d-contacts'),rptTruth.contacts),
+        rptCmpRow('📅 Citas agendadas',rptVal('d-appts'),rptTruth.appointments),
+        rptCmpRow('🚶 Visitas registradas',realVisits,rptTruth.showed)
+      ].join('');
+      document.getElementById('cmp-rows').innerHTML=rows;
+      document.getElementById('cmp-pending').innerHTML='⏳ Las <b>aprobadas, negadas y ventas</b> las confirma el manager al final del día.';
+      document.getElementById('cmp-card').classList.remove('hidden');
+      document.getElementById('btn-submit').classList.remove('hidden');
+      document.getElementById('btn-confirm').textContent='Volver a comparar';
+      document.getElementById('cmp-card').scrollIntoView({behavior:'smooth'});
+    }
+    function rptCmpRow(label,said,real){
+      if(real==null)return `<div class="cmp-row"><div class="cl">${label}</div><div class="cmp-vals"><span class="said">dijiste ${said==null?'—':said}</span><span class="diff">real: no disp.</span></div></div>`;
+      const s=said==null?0:said, diff=s-real, cls=diff===0?'ok':'off';
+      const dtxt=diff===0?'✓ igual':(diff>0?`+${diff} de más`:`${diff} de menos`);
+      return `<div class="cmp-row"><div class="cl">${label}</div><div class="cmp-vals"><span class="said">dijiste ${said==null?'—':said}</span><span class="real">real ${real}</span><span class="diff ${cls}">${dtxt}</span></div></div>`;
+    }
+    async function rptSubmit(){
+      if(rptErrors().length){rptConfirm();return;}
+      const btn=document.getElementById('btn-submit');btn.disabled=true;btn.textContent='Enviando…';
+      const cv=rptVisits.filter(v=>(v.client||'').trim());
+      const applied=cv.filter(v=>['denied','approved','sold'].includes(v.stage)).length;
+      const approved=cv.filter(v=>['approved','sold'].includes(v.stage)).length;
+      const denied=cv.filter(v=>v.stage==='denied').length;
+      const sold=cv.filter(v=>v.stage==='sold').length;
+      const payload={agent_name:me.name,role:me.role,report_date:todayISO(),calls:rptVal('d-calls'),contacts:rptVal('d-contacts'),appointments:rptVal('d-appts'),visits:cv.length,applied,approved,denied,sold,visits_detail:cv,truth_calls:rptTruth.calls,truth_contacts:rptTruth.contacts,truth_appointments:rptTruth.appointments,submitted_at:new Date().toISOString()};
+      try{localStorage.setItem('ar_kpi_'+todayISO(),JSON.stringify(payload));}catch(_){}
+      let saved=false;
+      try{const res=await fetch(`${SUPA_URL}/rest/v1/ar_kpi_daily?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(payload)});if(res.ok)saved=true;}catch(_){}
+      if(!saved){try{const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied,approved,sold};const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(core)});if(r2.ok)saved=true;}catch(_){}}
+      document.getElementById('main-content').innerHTML=`<div style="text-align:center;padding:50px 24px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;">✓</div>
+        <div style="font-size:20px;font-weight:800;">¡Reporte enviado!</div>
+        <p style="color:var(--gray-500);margin-top:6px;">${saved?'Tu producción de hoy quedó registrada.':'Guardado en tu dispositivo. Se sincroniza al reconectar.'}</p>
+        <button class="kpi-btn" style="max-width:260px;margin:22px auto 0;" onclick="goProfile(me.name,me.role==='closer'?'close':'prospect')">Ver mi dashboard →</button>
+      </div>`;
+      window.scrollTo(0,0);
+    }
+    async function rptLoadTruth(){
+      rptTruth={calls:null,contacts:null,appointments:null,showed:null};
+      try{
+        const t=todayISO();
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        const data=await res.json();
+        const row=(data.agents||[]).find(a=>(a.agentName||'').toLowerCase()===me.name.toLowerCase());
+        if(row){rptTruth.calls=row.calls||0;rptTruth.contacts=row.contacts!=null?row.contacts:null;rptTruth.appointments=row.appointments||0;}
+        else{rptTruth.calls=0;rptTruth.appointments=0;}
+      }catch(e){}
+    }
+    function renderReportForm(){
+      rptVisits=[];rptValidate=false;
+      const dateStr=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+      const visitsSub=me.role==='closer'?'Agrega cada visita que atendiste hoy (marca de dónde vino).':'Agrega cada visita que trajiste hoy y hasta dónde llegó.';
+      document.getElementById('main-content').innerHTML=`
+        <button class="back-btn" onclick="goProfile(me.name,me.role==='closer'?'close':'prospect')">← Mi dashboard</button>
+        <div class="page-title">📝 Reporte de hoy</div>
+        <div class="page-sub">${escapeHtml(me.name)} · ${dateStr}</div>
+        <div class="section-card">
+          <h3><span class="step-num">1</span>Tu actividad</h3>
+          <p class="section-sub">Escribe lo que <b>crees</b> que hiciste hoy. Al confirmar te muestro lo real (no veas el número antes 😉).</p>
+          <div class="stat-row"><div class="lbl">📞 Llamadas hoy</div><input class="num-input" type="number" min="0" id="d-calls" placeholder="0"></div>
+          <div class="stat-row"><div class="lbl">💬 Contactos<small>conversaciones de +2 min</small></div><input class="num-input" type="number" min="0" id="d-contacts" placeholder="0"></div>
+          <div class="stat-row"><div class="lbl">📅 Citas agendadas</div><input class="num-input" type="number" min="0" id="d-appts" placeholder="0"></div>
+        </div>
+        <div class="section-card">
+          <h3><span class="step-num">2</span>Tus visitas</h3>
+          <p class="section-sub">${visitsSub}</p>
+          <div id="visits-list"></div>
+          <button class="add-visit" onclick="rptAddVisit()">+ Agregar visita</button>
+        </div>
+        <div class="val-msg" id="val-msg"></div>
+        <button class="kpi-btn" id="btn-confirm" onclick="rptConfirm()">Confirmar y comparar</button>
+        <div class="section-card hidden" id="cmp-card">
+          <h3>📊 Lo que dijiste vs lo real</h3>
+          <p class="section-sub">El número real es el que cuenta. Esto mide qué tan cerca estuviste.</p>
+          <div id="cmp-rows"></div>
+          <div class="pending-note" id="cmp-pending"></div>
+        </div>
+        <button class="kpi-btn green hidden" id="btn-submit" onclick="rptSubmit()">Enviar reporte ✓</button>`;
+      rptAddVisit();
+      rptLoadTruth();
+    }
 
     function escapeAttr(s){return String(s??'').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
     function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
