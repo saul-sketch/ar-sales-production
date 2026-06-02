@@ -1351,7 +1351,11 @@
       try{localStorage.setItem('ar_kpi_'+todayISO(),JSON.stringify(payload));}catch(_){}
       let saved=false;
       try{const res=await fetch(`${SUPA_URL}/rest/v1/ar_kpi_daily?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(payload)});if(res.ok)saved=true;}catch(_){}
-      if(!saved){try{const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied,approved,sold};const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(core)});if(r2.ok)saved=true;}catch(_){}}
+      if(!saved){try{
+        // Save EVERYTHING to the existing table: numbers in columns, full detail (contacts/denied/role/visits/truth) in `notes` as JSON.
+        const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied,approved,sold,
+          notes:JSON.stringify({kind:'kpi',contacts:payload.contacts,denied,role:me.role,visits_detail:cv,truth:{calls:rptTruth.calls,contacts:rptTruth.contacts,appointments:rptTruth.appointments}})};
+        const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(core)});if(r2.ok)saved=true;}catch(_){}}
       document.getElementById('main-content').innerHTML=`<div style="text-align:center;padding:50px 24px;">
         <div style="width:64px;height:64px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;">✓</div>
         <div style="font-size:20px;font-weight:800;">¡Reporte enviado!</div>
