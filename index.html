@@ -58,7 +58,7 @@
     .hero-rank{text-align:right;}
     .hero-rank .pos{font-size:32px;font-weight:900;line-height:1;}
     .hero-rank .lbl{font-size:11px;opacity:.7;}
-    .hero-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:16px;}
+    .hero-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:9px;margin-top:16px;}
     .hero-stat{background:rgba(255,255,255,.08);border-radius:12px;padding:11px 13px;}
     .hero-stat .v{font-size:22px;font-weight:800;line-height:1;}
     .hero-stat .k{font-size:10px;opacity:.75;margin-top:3px;font-weight:600;}
@@ -761,6 +761,7 @@
             <div class="hero-stat"><div class="v">${primary.applied}</div><div class="k">Aplicaron</div><div class="c">${pct(primary.applied,primary.visits).toFixed(0)}%</div></div>
             <div class="hero-stat"><div class="v">${primary.approved}</div><div class="k">Aprobados</div><div class="c">${pct(primary.approved,primary.applied).toFixed(0)}%</div></div>
             <div class="hero-stat"><div class="v" style="color:#34d399;">${fmtShare(primary.sold)}</div><div class="k">Ventas</div><div class="c">${pct(primary.sold,primary.approved).toFixed(0)}% cierre</div></div>
+          ${(()=>{const _p=projectedSales(primary.sold);if(!_p)return '';return `<div class="hero-stat"><div class="v" style="color:#fbbf24;">${_p.proj}</div><div class="k">Proyección mes</div><div class="c">día ${_p.elapsed}/${_p.total}</div></div>`;})()}
           </div>
           <button class="hero-cta" onclick="openMyDetail()">Ver mi producción completa →</button>
         </div>`;
@@ -1073,6 +1074,23 @@
       return {byPeriod,keys,origin,tot};
     }
 
+    function projectedSales(sold){
+      const now=new Date();
+      const todayNum=now.getDate();
+      if(filterPeriod==='mtd'){
+        const totalDays=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+        if(todayNum===0)return null;
+        return {proj:Math.round(sold/todayNum*totalDays),total:totalDays,elapsed:todayNum};
+      }
+      if(/^\d{4}-\d{2}$/.test(filterPeriod)){
+        const[y,m]=filterPeriod.split('-').map(Number);
+        if(y===now.getFullYear()&&m===now.getMonth()+1){
+          const totalDays=new Date(y,m,0).getDate();
+          return {proj:Math.round(sold/todayNum*totalDays),total:totalDays,elapsed:todayNum};
+        }
+      }
+      return null;
+    }
     function renderProfilePage(s){
       if(!profileCtx)return;
       const {name,facet}=profileCtx;
@@ -1105,6 +1123,7 @@
           <div class="hero-stat"><div class="v">${primary.applied}</div><div class="k">Aplicaron</div><div class="c">${pct(primary.applied,primary.visits).toFixed(0)}%</div></div>
           <div class="hero-stat"><div class="v">${primary.approved}</div><div class="k">Aprobados</div><div class="c">${pct(primary.approved,primary.applied).toFixed(0)}%</div></div>
           <div class="hero-stat"><div class="v" style="color:#34d399;">${fmtShare(primary.sold)}</div><div class="k">Ventas</div><div class="c">${pct(primary.sold,primary.approved).toFixed(0)}% cierre</div></div>
+          ${(()=>{const _p=projectedSales(primary.sold);if(!_p)return '';return `<div class="hero-stat"><div class="v" style="color:#fbbf24;">${_p.proj}</div><div class="k">Proyección mes</div><div class="c">día ${_p.elapsed}/${_p.total}</div></div>`;})()}
         </div>
       </div>`;
       // Funnel(s) — closers show cierre + their own prospección; setters show prospección
