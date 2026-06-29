@@ -1413,6 +1413,24 @@
 
     function escapeAttr(s){return String(s??'').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
     function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  
+    // Fix tooltip clipping in overflow containers — position fixed via JS
+    document.addEventListener('mouseover',function(e){
+      const tip=e.target.closest('.tip');if(!tip)return;
+      const box=tip.querySelector('.tip-box');if(!box)return;
+      const tr=tip.getBoundingClientRect();
+      const bw=210;
+      let left=tr.left+tr.width/2-bw/2;
+      if(left<8)left=8;
+      if(left+bw>window.innerWidth-8)left=window.innerWidth-bw-8;
+      requestAnimationFrame(function(){
+        var bh=box.offsetHeight||60;
+        var top=tr.top-bh-10;
+        if(top<8)top=tr.bottom+8;
+        box.style.left=left+'px';
+        box.style.top=top+'px';
+      });
+    },true);
   </script>
 </body>
 </html>
