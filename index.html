@@ -590,7 +590,7 @@
       if(isMgr){
         const all=teamList(),f=all.filter(t=>t.name.toLowerCase().includes(teamFilter.toLowerCase()));
         teamHtml=`<div class="side-section"><div class="side-title">Equipo (${all.length})</div>
-          <input class="team-search" placeholder="Buscar persona…" value="${escapeAttr(teamFilter)}" oninput="teamFilter=this.value;renderSidebar();">
+          <input class="team-search" placeholder="Buscar persona…" value="${escapeAttr(teamFilter)}" oninput="teamFilter=this.value;renderSidebar();(document.querySelector('.team-search')||{focus:()=>{}}).focus();">
           <div style="max-height:320px;overflow-y:auto;">${f.length?f.map(t=>
             `<button class="team-item" onclick="goProfile('${escapeAttr(t.name)}','${t.facet}')"><span>${escapeHtml(t.name)}</span><span class="rl ${t.role}">${t.role==='closer'?'C':'S'}</span></button>`
           ).join(''):'<div style="font-size:12px;color:var(--gray-400);padding:8px 11px;">Sin resultados</div>'}</div></div>`;
