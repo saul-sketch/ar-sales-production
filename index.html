@@ -157,7 +157,7 @@
     /* Tooltip (?) */
     .tip{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--gray-300);color:white;font-size:10px;font-weight:800;cursor:help;margin-left:5px;vertical-align:middle;position:relative;}
     .tip:hover .tip-box,.tip.show .tip-box{display:block;}
-    .tip-box{display:none;position:absolute;bottom:135%;left:50%;transform:translateX(-50%);background:var(--gray-900);color:white;font-size:11px;font-weight:500;line-height:1.45;padding:9px 11px;border-radius:8px;width:210px;z-index:60;text-align:left;text-transform:none;letter-spacing:normal;box-shadow:var(--shadow-lg);}
+    .tip-box{display:none;position:fixed;bottom:auto;left:0;top:0;transform:none;background:var(--gray-900);color:white;font-size:11px;font-weight:500;line-height:1.45;padding:9px 11px;border-radius:8px;width:210px;z-index:9999;text-align:left;text-transform:none;letter-spacing:normal;box-shadow:var(--shadow-lg);}
     .tip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--gray-900);}
     /* Top period bar (custom ranges) */
     .period-bar{background:white;border-bottom:1px solid var(--gray-200);padding:9px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
