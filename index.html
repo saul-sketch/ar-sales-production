@@ -284,7 +284,7 @@
     // under "this month" shows that month by week, a short range by day, etc).
     function aggForPeriod(){
       if(filterPeriod.startsWith('last:'))return +filterPeriod.slice(5)<=14?'day':'week';
-      if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');const days=(new Date(p[2])-new Date(p[1]))/86400000+1;return days<=14?'day':days<=92?'week':'month';}
+      if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');const days=(new Date(p[2])-new Date(p[1]))/86400000+1;return days<=16?'day':days<=92?'week':'month';}
       if(/^\d{4}-\d{2}$/.test(filterPeriod)||filterPeriod==='mtd'||filterPeriod==='qtd')return 'day';
       return 'month';
     }
@@ -294,9 +294,11 @@
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
     // Top period bar: quick day-ranges + custom from/to
     function prevMonthKey(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+    function quincena1Key(){const d=new Date();const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0');return `range:${y}-${m}-01:${y}-${m}-15`;}
+    function quincena2Key(){const d=new Date();const y=d.getFullYear(),mo=d.getMonth();const last=new Date(y,mo+1,0).getDate();const m=String(mo+1).padStart(2,'0');return `range:${y}-${m}-16:${y}-${m}-${String(last).padStart(2,'0')}`;}
     function renderPeriodBar(){
       const bar=document.getElementById('period-bar');if(!bar)return;
-      const quick=[{p:'last:1',lbl:'Hoy'},{p:'last:3',lbl:'3 días'},{p:'last:7',lbl:'7 días'},{p:'mtd',lbl:'Este mes'},{p:prevMonthKey(),lbl:'Mes pasado'}];
+      const quick=[{p:'last:1',lbl:'Hoy'},{p:'last:3',lbl:'3 días'},{p:'last:7',lbl:'7 días'},{p:'mtd',lbl:'Este mes'},{p:quincena1Key(),lbl:'Q1'},{p:quincena2Key(),lbl:'Q2'},{p:prevMonthKey(),lbl:'Mes pasado'}];
       const chips=quick.map(q=>`<button class="pb-chip ${filterPeriod===q.p?'active':''}" onclick="setPeriod('${q.p}')">${q.lbl}</button>`).join('');
       const isRange=filterPeriod.startsWith('range:');const rp=isRange?filterPeriod.split(':'):['','',''];
       bar.innerHTML=`
