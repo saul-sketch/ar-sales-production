@@ -425,7 +425,7 @@
       try{
         const [rRes,aRes,mRes,srRes]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/ar_daily_reports?select=date,location,visits&order=date.desc`,{headers:SUPA_HEADERS}),
-          fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role&order=name.asc`,{headers:SUPA_HEADERS}),
+          fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role,location&order=name.asc`,{headers:SUPA_HEADERS}),
           fetch(`${SUPA_URL}/rest/v1/ar_agent_mapping?select=dialer_user_id,dialer_name,sales_report_name`,{headers:SUPA_HEADERS}),
           fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?select=*`,{headers:SUPA_HEADERS})
         ]);
@@ -445,6 +445,8 @@
         try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=30`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
         window._closerSet=new Set(agents.filter(a=>a.role==='closer').map(a=>a.name.toLowerCase()));
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
+        // Equipo autoritativo desde ar_agents (etiquetas del team management): setter→Call Center; closer+locación→Closers Orlando/Kissimmee.
+        window._agentTeam={};agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
@@ -717,9 +719,13 @@
     }
     function renderMgmtView(s){
       const domLoc=closerDominantLoc();
+      const at=window._agentTeam||{};
+      let missing=0;
       const teamOf=(name,role)=>{
         const k=(name||'').toLowerCase();
-        if(window._teamMap[k])return window._teamMap[k];
+        if(window._teamMap[k])return window._teamMap[k];   // override manual si existe
+        if(at[k])return at[k];                             // equipo real (ar_agents: role+location)
+        missing++;                                          // sin etiqueta → cae en preliminar
         if(role==='setter')return 'cc';
         return domLoc[k]||'orlando';
       };
@@ -752,9 +758,11 @@
       document.getElementById('main-content').innerHTML=`
         <div class="page-title">🗂️ Management View</div>
         <div class="page-sub">Producción separada por equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca a una persona para su perfil</div>
-        <div class="section-card" style="border:1.5px solid #fde68a;background:#fffbeb;">
-          <p style="margin:0;font-size:13px;color:#92400e;">⚠️ Clasificación <b>preliminar</b>: setters → Call Center, closers → su locación con más visitas. El siguiente paso es alimentarla con los <b>equipos exactos de WaveDialer</b> para que cada persona quede en su equipo real.</p>
-        </div>
+        ${missing?`<div class="section-card" style="border:1.5px solid #fde68a;background:#fffbeb;">
+          <p style="margin:0;font-size:13px;color:#92400e;">⚠️ ${missing} persona(s) sin etiqueta de equipo — clasificadas de forma preliminar. Agrégalas en el team management (rol + locación) para dejarlas exactas.</p>
+        </div>`:`<div class="section-card" style="border:1.5px solid #bbf7d0;background:#f0fdf4;">
+          <p style="margin:0;font-size:13px;color:#166534;">✅ Equipos según las etiquetas oficiales: setter → Call Center · closer → su locación (Orlando / Kissimmee).</p>
+        </div>`}
         ${card('Call Center','📞','#3b82f6',buckets.cc)}
         ${card('Closers Orlando','🎯','#f97316',buckets.orlando)}
         ${card('Closers Kissimmee','🎯','#8b5cf6',buckets.kissimmee)}`;
