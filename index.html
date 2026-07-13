@@ -287,7 +287,7 @@
     let allReports=[];
     let filterPeriod='mtd',filterLoc='all'; // default = THIS MONTH (sales goals are monthly, not rolling 30d)
     let lbTab='closer',lbSort={key:'sold',dir:-1};
-    let view='global';          // global | setters | closers | recon | profile
+    let view='resumen';          // global | setters | closers | recon | profile
     let profileCtx=null;        // {name, facet}
     let teamFilter='';
     let monthsExpanded=false;   // sidebar month list collapsed by default
@@ -356,7 +356,7 @@
       document.getElementById('user-name').textContent=me.name;
       const rb=document.getElementById('user-role');
       rb.textContent=me.role;rb.className='role-badge '+me.role;
-      view=me.role==='manager'?'global':'profile';
+      view=me.role==='manager'?'resumen':'profile';
       await refresh();
     });
 
@@ -594,12 +594,14 @@
       if(view==='report'){renderReportForm();return;}
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
+      if(view==='resumen'){renderResumen(s);return;}
       if(view==='setters'){renderRoleView(s,'setter');return;}
       if(view==='closers'){renderRoleView(s,'closer');return;}
       if(view==='mgmt'){renderMgmtView(s);return;}
       if(view==='efectividad'){renderEfectividad(s);return;}
+      if(view==='global'){renderGlobal(s);return;}
       if(view==='recon'){renderReconView();return;}
-      renderGlobal(s); // default (managers)
+      renderResumen(s); // default (managers)
     }
 
     // ===== Sidebar =====
@@ -623,8 +625,8 @@
       const isMgr=me.role==='manager';
       let nav;
       if(isMgr){
-        nav=[{v:'global',ico:'📊',lbl:'Global'},{v:'efectividad',ico:'🎯',lbl:'Efectividad'},{v:'mgmt',ico:'🗂️',lbl:'Management View'},{v:'setters',ico:'📞',lbl:'Setters'},
-             {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'🔗',lbl:'Reconciliación'}];
+        nav=[{v:'resumen',ico:'🎯',lbl:'Resumen'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
+             {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'📅',lbl:'Calendario'}];
       }else{
         nav=[{v:'profile',ico:'⭐',lbl:'Mi producción',self:true},
              {v:me.role==='closer'?'closers':'setters',ico:'🏆',lbl:'Mi ranking'}];
@@ -759,6 +761,82 @@
       return `<td style="text-align:center;"><span style="font-weight:800;color:${c};">${d>0?r.toFixed(0)+'%':'—'}</span><div style="font-size:10px;color:var(--gray-400);">${fmtShare(n)}/${fmtShare(d)}</div></td>`;
     }
     function efTeamLabel(t){return {cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee'}[t]||'Sin equipo';}
+
+    // ===== RESUMEN — landing del manager: pulso del embudo + a quién coachear + equipos =====
+    function renderResumen(s){
+      const t=teamTotals(s);
+      const dialer=window._dialerByAgent||{}, teamMap=window._agentTeam||{}, names=window._agentNames||{};
+      const P={};
+      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,team:teamMap[k]||null,calls:0,visitas:0,aplico:0,aprob:0,neg:0,vend:0,monto:0}; return P[k];};
+      Object.entries(dialer).forEach(([k,d])=>{eP(canonName(names[k]||k)).calls+=d.calls||0;});
+      s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
+        [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; const o=eP(c);
+          o.visitas++; if(v.applied===true)o.aplico++; if(v.result==='approved')o.aprob++; if(v.result==='denied')o.neg++; if(v.sale===true){o.vend++;o.monto+=v.net_profit||0;}
+        });
+      }));
+      const people=Object.values(P);
+      const base=()=>({n:0,calls:0,visitas:0,aplico:0,aprob:0,neg:0,vend:0,monto:0});
+      const teams={cc:base(),orlando:base(),kissimmee:base()};
+      people.forEach(o=>{const a=teams[o.team]; if(!a)return; a.n++;['calls','visitas','aplico','aprob','neg','vend','monto'].forEach(f=>a[f]+=o[f]);});
+
+      // Pulso: embudo en una línea
+      const stage=(val,lbl,color)=>`<div style="flex:1;min-width:64px;text-align:center;"><div style="font-size:19px;font-weight:800;color:${color||'var(--gray-900)'};line-height:1.1;">${val}</div><div style="font-size:11px;color:var(--gray-400);">${lbl}</div></div>`;
+      const conv=(n,d,tgt)=>{const r=d>0?n/d*100:0;const c=d>0?efColor(r,tgt):'var(--gray-300)';return `<div style="display:flex;align-items:center;font-size:11px;font-weight:700;color:${c};padding:0 2px;">${d>0?r.toFixed(0)+'%':''}›</div>`;};
+      const arrow=`<div style="display:flex;align-items:center;color:var(--gray-300);font-size:12px;">›</div>`;
+      const pulse=`<div class="section-card"><p class="section-sub">Pulso del equipo · embudo del período</p>
+        <div style="display:flex;align-items:stretch;gap:2px;overflow-x:auto;">
+          ${stage(t.calls.toLocaleString('en-US'),'llamadas')}${arrow}
+          ${stage(t.appts,'citas')}${arrow}
+          ${stage(t.visits,'visitas')}${conv(t.applied,t.visits,70)}
+          ${stage(t.applied,'aplicó')}${arrow}
+          ${stage(t.approved,'aprobó')}${conv(t.sold,t.approved,70)}
+          ${stage(fmtShare(t.sold),'ventas','var(--green)')}${arrow}
+          ${stage(fmtMoney(t.profit),'monto','var(--green)')}
+        </div></div>`;
+
+      // Alertas: a quién coachear (rojo primero) + 1 positiva
+      const alerts=[];
+      Object.keys(teams).forEach(k=>{const a=teams[k]; if(a.visitas<3)return;
+        const vs=a.vend/a.visitas*100, ap=a.aplico/a.visitas*100;
+        if(vs<15 && a.neg>=Math.max(a.vend,2)) alerts.push({sev:1,who:efTeamLabel(k),m:'visita→venta '+vs.toFixed(0)+'%',why:a.neg+' negados · tráfico basura',go:"navigate('efectividad')"});
+        else if(ap<60) alerts.push({sev:1,who:efTeamLabel(k),m:'aplicó '+ap.toFixed(0)+'%',why:'precalificación telefónica',go:"navigate('efectividad')"});
+      });
+      people.filter(p=>p.visitas>=5).forEach(p=>{const ap=p.aplico/p.visitas*100, vs=p.vend/p.visitas*100;
+        if(ap<50) alerts.push({sev:1,who:p.name,m:'aplicó '+ap.toFixed(0)+'%',why:'precalificación',go:"goProfile('"+escapeAttr(p.name)+"','close')"});
+        else if(vs<10 && p.neg>=2) alerts.push({sev:1,who:p.name,m:'visita→venta '+vs.toFixed(0)+'%',why:p.neg+' negados',go:"goProfile('"+escapeAttr(p.name)+"','close')"});
+      });
+      // positiva: mejor equipo por visita→venta
+      let best=null;Object.keys(teams).forEach(k=>{const a=teams[k];if(a.visitas<5)return;const vs=a.vend/a.visitas*100;if(!best||vs>best.vs)best={k,vs,neg:a.neg};});
+      const alertRows=alerts.slice(0,4).map(a=>`
+        <div class="clickable-row" onclick="${a.go}" style="background:white;border:1px solid var(--gray-200);border-left:3px solid var(--red);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;">
+          <div><span style="font-weight:700;">${escapeHtml(a.who)}</span><span style="color:var(--gray-500);font-size:13px;"> · ${a.m}</span></div>
+          <div style="font-size:12px;color:var(--red);background:rgba(226,75,74,.1);padding:3px 9px;border-radius:6px;white-space:nowrap;">${escapeHtml(a.why)}</div>
+        </div>`).join('') + (best?`
+        <div style="background:white;border:1px solid var(--gray-200);border-left:3px solid var(--green);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div><span style="font-weight:700;">${efTeamLabel(best.k)}</span><span style="color:var(--gray-500);font-size:13px;"> · visita→venta ${best.vs.toFixed(0)}%</span></div>
+          <div style="font-size:12px;color:var(--green);background:rgba(16,185,129,.1);padding:3px 9px;border-radius:6px;">mejor equipo</div>
+        </div>`:'');
+
+      // Tarjetas de equipo
+      const card=(k,color)=>{const a=teams[k]; const ap=a.visitas?a.aplico/a.visitas*100:0, vs=a.visitas?a.vend/a.visitas*100:0;
+        return `<div class="clickable-row" onclick="navigate('efectividad')" style="background:white;border:1px solid var(--gray-200);border-top:3px solid ${color};border-radius:0 0 12px 12px;padding:12px 14px;cursor:pointer;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="font-weight:800;">${efTeamLabel(k)}</span><span style="font-size:11px;color:var(--gray-400);">${a.n} pers.</span></div>
+          <div style="font-size:12px;color:var(--gray-500);margin:8px 0;">${a.calls.toLocaleString('en-US')} llam · ${a.visitas} vis · ${fmtMoney(a.monto)}</div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--gray-400);">aplicó</span><span style="font-weight:700;color:${a.visitas?efColor(ap,70):'var(--gray-300)'};">${a.visitas?ap.toFixed(0)+'%':'—'}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:3px;"><span style="color:var(--gray-400);">visita→venta</span><span style="font-weight:700;color:${a.visitas?efColor(vs,20):'var(--gray-300)'};">${a.visitas?vs.toFixed(0)+'%':'—'}</span></div>
+        </div>`;};
+
+      document.getElementById('main-content').innerHTML=`
+        <div class="page-title">Resumen</div>
+        <div class="page-sub">Todo el equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''}</div>
+        ${pulse}
+        <div style="font-size:15px;font-weight:800;margin:16px 0 8px;color:var(--gray-700);">⚠️ A quién coachear</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">${alertRows||'<div class="section-card"><div class="empty">Todo en verde 👌</div></div>'}</div>
+        <div style="font-size:15px;font-weight:800;margin:16px 0 8px;color:var(--gray-700);">Equipos · toca para ver su gente</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
+          ${card('cc','#3b82f6')}${card('orlando','#f97316')}${card('kissimmee','#8b5cf6')}
+        </div>`;
+    }
     function setEfMode(m){window._efMode=m;render();}
     function renderEfectividad(s){
       const reports=s.reports;
