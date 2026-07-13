@@ -362,14 +362,42 @@
       const ident=resolveIdentity();
       if(!ident){document.getElementById('screen-gate').style.display='flex';return;}
       me=ident;
+      await touchAccess();
+      // CANDADO: solo entra gente verificada. Nadie entra "sin usuario".
+      if(!(await authorizeAccess())){ showNoAccess(); return; }
       document.getElementById('screen-app').style.display='';
       document.getElementById('user-name').textContent=me.name;
       const rb=document.getElementById('user-role');
       rb.textContent=me.role;rb.className='role-badge '+me.role;
-      view=me.role==='manager'?'produccion':'profile';
-      await touchAccess();
+      if(!view||view==='global')view=me.role==='manager'?'produccion':'profile';
       await refresh();
     });
+    // Autorizado si: manager/admin (rol de Settings) · usuario+clave creado por Saúl · o persona real
+    // del CRM de AR (en crm_roster). Bloqueado si active=false o si no es nadie de AR.
+    async function authorizeAccess(){
+      try{
+        const a=window._myAccess;
+        if(a&&a.active===false) return false;                       // acceso revocado
+        if(a&&['admin','manager'].includes(a.role)) return true;    // manager/admin
+        if(a&&a.access_type==='user') return true;                  // usuario+clave creado en Settings
+        // ¿persona real de AR? verifica el NOMBRE contra la lista maestra del CRM de AR (crm_roster no tiene email).
+        if(!me.name)return false;
+        const cn=canonName(me.name)||me.name;
+        const conds=['name.ilike.'+encodeURIComponent(me.name)];
+        if(cn&&cn!==me.name)conds.push('name.ilike.'+encodeURIComponent(cn));
+        const r=await fetch(`${SUPA_URL}/rest/v1/crm_roster?or=(${conds.join(',')})&select=crm_user_id&limit=1`,{headers:SUPA_HEADERS});
+        const rows=await r.json();
+        return Array.isArray(rows)&&rows.length>0;
+      }catch(e){ return false; }
+    }
+    function showNoAccess(){
+      const g=document.getElementById('screen-gate');
+      g.querySelector('.gate-card').innerHTML=`<div class="gate-mark">AR</div>
+        <h1>Sin acceso</h1>
+        <p>Tu usuario <b>${escapeHtml(me.name||me.email||'')}</b> no tiene acceso a KPIs de Producción.</p>
+        <p style="font-size:12px;color:var(--gray-400);margin-top:14px;">Pídele acceso a Saúl. Él te habilita desde Settings.</p>`;
+      g.style.display='flex';
+    }
 
     // ===== Control de acceso: registra quién abre + sus permisos (Settings → Users) =====
     const DASH='produccion';
@@ -383,7 +411,7 @@
         await fetch(`${SUPA_URL}/rest/v1/dashboard_access?on_conflict=ukey`,{method:'POST',
           headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
           body:JSON.stringify({dashboard:DASH,ukey,name:me.name,email:me.email||null,last_seen_at:new Date().toISOString(),last_period:filterPeriod})});
-        const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?ukey=eq.${encodeURIComponent(ukey)}&select=role,can_history,active`,{headers:SUPA_HEADERS});
+        const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?ukey=eq.${encodeURIComponent(ukey)}&select=role,can_history,active,access_type`,{headers:SUPA_HEADERS});
         const rows=await r.json();
         window._myAccess=rows[0]||{role:'viewer',can_history:true,active:true};
         // El ROL de Settings decide qué ve: admin/manager → todo el dashboard; viewer/agent → solo lo suyo.
