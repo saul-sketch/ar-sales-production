@@ -450,7 +450,7 @@
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
         // Equipo AUTORITATIVO desde crm_roster (etiquetas reales del WaveDialer, refrescadas solas):
         // call-center → Call Center; closers-orlando/kissimmee → sus equipos. Fallback a ar_agents solo si un nombre no matchea.
-        window._agentTeam={}; window._rosterById={};
+        window._agentTeam={}; window._rosterById={}; window._nameCase={};
         try{
           // TODAS las filas (activas e inactivas) — así el dialer mapea a CUALQUIER persona del CRM por su ID.
           const rr=await fetch(`${SUPA_URL}/rest/v1/crm_roster?select=crm_user_id,name,team,active`,{headers:SUPA_HEADERS});
@@ -459,6 +459,7 @@
           (roster||[]).forEach(p=>{
             if(p.crm_user_id)window._rosterById[p.crm_user_id]=p.name;
             const ln=(p.name||'').toLowerCase();
+            if(p.name)window._nameCase[ln]=p.name; // escritura correcta del CRM
             if(p.team&&map[p.team])window._agentTeam[ln]=map[p.team];
           });
           window._crmActive=new Set((roster||[]).filter(p=>p.active).map(p=>(p.name||'').toLowerCase()));
@@ -548,7 +549,7 @@
     function perDay(total,days){return days>0?Math.round(total/days):0;}
     function clean(s){if(!s)return null;const t=String(s).trim();return ['','n/a','na','—','-'].includes(t.toLowerCase())?null:t;}
     // Unifica variantes de nombre a la persona canónica del CRM (evita duplicados en TODAS las vistas).
-    function canonName(n){if(!n)return n;const a=(window._alias||{})[String(n).toLowerCase().trim()];return a?a.canon:n;}
+    function canonName(n){if(!n)return n;const k=String(n).toLowerCase().trim();const a=(window._alias||{})[k];if(a)return a.canon;return (window._nameCase||{})[k]||n;}
     function fmtShare(x){return Number.isInteger(x)?String(x):x.toFixed(1);}
     function fmtMoney(n){return '$'+Math.round(n||0).toLocaleString('en-US');}
     function pct(n,d){return d>0?(n/d*100):0;}
@@ -818,8 +819,10 @@
         [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; eP(c).recs.push({...v,_date:r.date,_loc:r.location}); });
       }));
       const teamF=window._prodTeam||'all';
-      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0)&&(teamF==='all'||p.team===teamF))
-        .sort((a,b)=>prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length);
+      const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
+      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0)&&matchTeam(p))
+        // con equipo primero, luego por producción (ventas → visitas → llamadas); los "sin equipo" al final.
+        .sort((a,b)=>(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
       // Fila de números drilleable para un set de registros
@@ -852,7 +855,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
           <div><div class="page-title">Producción diaria</div>
           <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca una persona para su desglose · toca un número para el detalle</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">${teamPill('all','Todos')}${teamPill('cc','Call Center')}${teamPill('orlando','Closers Orlando')}${teamPill('kissimmee','Closers Kissimmee')}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${teamPill('all','Todos')}${teamPill('cc','Call Center')}${teamPill('orlando','Closers Orlando')}${teamPill('kissimmee','Closers Kissimmee')}${teamPill('none','Sin equipo')}</div>
         </div>
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
