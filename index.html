@@ -1005,18 +1005,24 @@
         const byO={}; ORIGINS.forEach(o=>byO[o]=p.recs.filter(v=>prodOrigin(v)===o));
         const calls=p.calls?p.calls.toLocaleString('en-US'):'—', mins=p.minutes?p.minutes.toLocaleString('en-US'):'—', sms=p.sms?p.sms.toLocaleString('en-US'):'—';
         // Línea principal = Propio (self-gen): lleva el esfuerzo propio (llamadas, contactos, citas)
-        // Colapsado = TOTAL (todo lo que produjo). Al abrir se ve el desglose por origen.
+        // Cerrada: la primera línea = TOTAL (sin cita→vis, es discrepante). Al abrir, esa misma
+        // línea pasa a ser Propio (ahí sí cita→vis tiene sentido), luego CC / Walk-in, y al final TOTAL.
+        const firstFunnel = open ? cells(byO['Propio'],p.name+' · Propio',p.citas) : cells(p.recs,p.name+' · Total',0);
         const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':''}">
-          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)}${open?' · TOTAL':''}</div></td>
+          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${open?'Propio':'TOTAL'}</div></td>
           ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}
-          ${cells(p.recs,p.name+' · Total',p.citas)}
+          ${firstFunnel}
         </tr>`;
         let detail='';
         if(open){
-          detail=[['Propio','Propio'],['Call Center','Call Center'],['Walk-in','Walk-in'],['Otro','Otro']].map(([o,lbl])=>{const rs=byO[o]; if(!rs.length)return '';
-            const cc=o==='Propio'?p.citas:0;
+          detail=[['Call Center','Call Center'],['Walk-in','Walk-in'],['Otro','Otro']].map(([o,lbl])=>{const rs=byO[o]; if(!rs.length)return '';
             return `<tr style="background:var(--gray-50);">
-              <td style="padding-left:26px;color:var(--gray-500);font-size:12px;">${lbl}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o,cc,13)}</tr>`;}).join('');
+              <td style="padding-left:26px;color:var(--gray-500);font-size:12px;">${lbl}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o,0,13)}</tr>`;}).join('');
+          // TOTAL al final = banda oscura, cierre de la suma (sin cita→vis)
+          detail+=`<tr style="background:var(--gray-200);font-weight:800;border-top:2px solid var(--gray-300);">
+            <td style="padding-left:26px;color:var(--gray-900);font-size:13px;letter-spacing:.03em;">TOTAL</td>
+            ${dcell(calls,'font-weight:800;',15)}${dcell(p.contacts,'font-weight:800;',15)}${dcell(mins,'font-weight:800;',15)}${dcell(sms,'font-weight:800;',15)}${dcell(p.citas,'font-weight:800;',15)}
+            ${cells(p.recs,p.name+' · Total',0,15)}</tr>`;
         }
         return summary+detail;
       }).join('');
