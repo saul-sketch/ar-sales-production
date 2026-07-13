@@ -1010,17 +1010,33 @@
         const open=window._prodOpen.has(p.key);
         const byO={}; ORIGINS.forEach(o=>byO[o]=p.recs.filter(v=>prodOrigin(v)===o));
         const calls=p.calls?p.calls.toLocaleString('en-US'):'—', mins=p.minutes?p.minutes.toLocaleString('en-US'):'—', sms=p.sms?p.sms.toLocaleString('en-US'):'—';
-        // Línea principal = Propio (self-gen): lleva el esfuerzo propio (llamadas, contactos, citas)
-        // Cerrada: la primera línea = TOTAL (sin cita→vis, es discrepante). Al abrir, esa misma
-        // línea pasa a ser Propio (ahí sí cita→vis tiene sentido), luego CC / Walk-in, y al final TOTAL.
-        const firstFunnel = open ? cells(byO['Propio'],p.name+' · Propio',p.citas) : cells(p.recs,p.name+' · Total',0);
+        // Línea principal: cerrada = TOTAL. Closers: al abrir pasa a Propio + CC/Walk-in + TOTAL.
+        // Call Center (setters): siempre TOTAL arriba; al abrir se desglosa por CLOSER que atendió sus citas.
+        const isCC = p.team==='cc';
+        const firstFunnel = (open && !isCC) ? cells(byO['Propio'],p.name+' · Propio',p.citas) : cells(p.recs,p.name+' · Total', isCC?p.citas:0);
+        const mainLbl = (open && !isCC) ? 'Propio' : 'TOTAL';
         const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':''}">
-          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${open?'Propio':'TOTAL'}</div></td>
+          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${mainLbl}</div></td>
           ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}
           ${firstFunnel}
         </tr>`;
         let detail='';
-        if(open){
+        if(open && isCC){
+          // Desglose por CLOSER que atendió las citas de este setter, agrupado por locación (0.5 si fue en pareja)
+          const byCloser={};
+          p.recs.forEach(v=>{ const cs=[...new Set([canonName(clean(v.closer)),canonName(clean(v.closer2))].filter(Boolean))];
+            const w=cs.length?1/cs.length:1; cs.forEach(c=>{ (byCloser[c]=byCloser[c]||[]).push({...v,_w:w}); }); });
+          const grp={orlando:[],kissimmee:[],otro:[]};
+          Object.keys(byCloser).forEach(c=>{ const t=teamMap[c.toLowerCase()]; grp[t==='orlando'?'orlando':t==='kissimmee'?'kissimmee':'otro'].push(c); });
+          const renderGrp=(label,arr)=>{ if(!arr.length)return '';
+            arr.sort((a,b)=>prodAgg(byCloser[b]).vend-prodAgg(byCloser[a]).vend||prodAgg(byCloser[b]).visitas-prodAgg(byCloser[a]).visitas);
+            let out=`<tr style="background:var(--gray-50);"><td colspan="13" style="padding:7px 8px 4px 26px;font-size:10px;font-weight:800;color:var(--gray-500);letter-spacing:.05em;text-transform:uppercase;">${label}</td></tr>`;
+            out+=arr.map(c=>`<tr style="background:var(--gray-50);"><td style="padding-left:34px;color:var(--gray-700);font-size:12px;">${escapeHtml(c)}</td><td></td><td></td><td></td><td></td><td></td>${cells(byCloser[c],p.name+' · '+c,0,13)}</tr>`).join('');
+            const subRecs=[]; arr.forEach(c=>subRecs.push(...byCloser[c]));
+            out+=`<tr style="background:var(--gray-200);font-weight:800;"><td style="padding-left:26px;color:var(--gray-900);font-size:12px;">Total ${label.replace('Closers de ','')}</td><td></td><td></td><td></td><td></td><td></td>${cells(subRecs,p.name+' · Total '+label,0,13)}</tr>`;
+            return out; };
+          detail = renderGrp('Closers de Orlando',grp.orlando)+renderGrp('Closers de Kissimmee',grp.kissimmee)+renderGrp('Otros',grp.otro);
+        } else if(open){
           detail=[['Call Center','Call Center'],['Walk-in','Walk-in'],['Otro','Otro']].map(([o,lbl])=>{const rs=byO[o]; if(!rs.length)return '';
             return `<tr style="background:var(--gray-50);">
               <td style="padding-left:26px;color:var(--gray-500);font-size:12px;">${lbl}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o,0,13)}</tr>`;}).join('');
