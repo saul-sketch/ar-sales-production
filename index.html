@@ -327,7 +327,7 @@
     }
     async function setPeriod(p){
       if(!periodAllowed(p)){ alert('Tu acceso es solo del mes actual. Pídele a Saúl permiso de históricos.'); return; }
-      filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
+      filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await Promise.all([loadDialer(),loadAppts()]);if(mc)mc.style.opacity='';render();}
     function setLoc(l){filterLoc=l;render();}
     function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
@@ -512,6 +512,21 @@
       }catch(e){window._dialerByAgent={};window._dialerOk=false;console.warn('dialer feed failed',e);}
     }
 
+    // Citas AGENDADAS por período, contadas por quien las creó (createdBy) desde ghl_appointments.
+    // Fuente correcta: el dialer contaba por "asignado" (closer o nadie) y daba 0 a los setters.
+    async function loadAppts(){
+      try{
+        const {from,to}=periodRange();
+        const toEx=new Date(to+'T00:00:00'); toEx.setDate(toEx.getDate()+1);
+        const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
+        const r=await fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})});
+        const rows=await r.json();
+        const byName={}, rid=window._rosterById||{};
+        (Array.isArray(rows)?rows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const k=disp.toLowerCase(); if(!byName[k])byName[k]={n:0,name:disp}; byName[k].n+=(+x.n||0); });
+        window._apptsByName=byName; window._apptsOk=true;
+      }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
+    }
+
     async function refresh(){
       try{
         const [rRes,aRes,mRes,srRes]=await Promise.all([
@@ -568,7 +583,7 @@
         }
         // "Reporte de hoy" button only for setters/closers (the ones who fill KPIs)
         const rbtn=document.getElementById('report-btn');if(rbtn)rbtn.style.display=(me.role==='closer'||me.role==='setter')?'':'none';
-        await loadDialer(); // live dialer feed for current period
+        await Promise.all([loadDialer(),loadAppts()]); // dialer feed + citas por agendador
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
       }catch(e){document.getElementById('main-content').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}
@@ -978,7 +993,10 @@
       // Por persona: registros de visita agrupados por origen
       const P={};
       const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,recs:[]}; return P[k];};
-      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0; o.citas+=d.appointments||0;});
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0;});
+      // Citas = agendadas por la persona (createdBy), fuente ghl_appointments. Crea también a quien solo agendó.
+      const appts=window._apptsByName||{};
+      Object.values(appts).forEach(a=>{ eP(a.name); });
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
         const closers=[...new Set([canonName(clean(v.closer)),canonName(clean(v.closer2))].filter(Boolean))];
         const w = closers.length ? 1/closers.length : 1;   // venta/visita en pareja = mitad y mitad
@@ -987,9 +1005,10 @@
         // La cita de Call Center también cuenta (crédito completo) para el setter que la agendó
         if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&!closers.includes(st)) eP(st).recs.push({...rec,_w:1}); }
       }));
+      Object.values(P).forEach(p=>{ p.citas=(appts[p.key]?appts[p.key].n:0); });
       const teamF=window._prodTeam||'all';
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
-      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0)&&matchTeam(p))
+      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0||p.citas>0)&&matchTeam(p))
         // con equipo primero, luego por producción (ventas → visitas → llamadas); los "sin equipo" al final.
         .sort((a,b)=>(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
 
@@ -1178,7 +1197,8 @@
       // Por persona: esfuerzo (dialer) + embudo (reportes)
       const P={};
       const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,visitas:0,aplico:0,noAplico:0,aprob:0,neg:0,vend:0,monto:0,pv:0,ps:0,tv:0,ts:0}; return P[k];};
-      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;o.citas+=d.appointments||0;});
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;});
+      const efAppts=window._apptsByName||{}; Object.values(efAppts).forEach(a=>{ eP(a.name); }); // citas por agendador
       reports.forEach(r=>(r.visits||[]).forEach(v=>{
         const ch=efChannelOf(v); const cs=chStat[ch]; cs.visits++; if(v.applied===true)cs.applied++; if(v.result==='approved')cs.approved++; if(v.sale===true){cs.sold++;cs.profit+=v.net_profit||0;}
         const selfgen=(ch==='Self-gen');
@@ -1189,6 +1209,7 @@
           if(selfgen){o.pv++;if(v.sale===true)o.ps++;}else{o.tv++;if(v.sale===true)o.ts++;}
         });
       }));
+      Object.values(P).forEach(p=>{ p.citas=(efAppts[p.name.toLowerCase()]?efAppts[p.name.toLowerCase()].n:0); });
       const people=Object.values(P);
 
       // Celdas del embudo completo (esfuerzo → visitas → aplicó → negó → cierre → visita-venta → monto)
