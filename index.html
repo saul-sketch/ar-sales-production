@@ -386,6 +386,13 @@
         const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?ukey=eq.${encodeURIComponent(ukey)}&select=role,can_history,active`,{headers:SUPA_HEADERS});
         const rows=await r.json();
         window._myAccess=rows[0]||{role:'viewer',can_history:true,active:true};
+        // El ROL de Settings decide qué ve: admin/manager → todo el dashboard; viewer/agent → solo lo suyo.
+        // La lista MANAGERS del código queda de respaldo (managers base).
+        const isMgr = ['admin','manager'].includes(window._myAccess.role) || me.role==='manager';
+        me.role = isMgr ? 'manager' : 'agent';
+        view = isMgr ? 'produccion' : 'profile';
+        if(!isMgr) profileCtx = { name: me.name, facet: 'close' };
+        const rb=document.getElementById('user-role'); if(rb){ rb.textContent=me.role; rb.className='role-badge '+me.role; }
       }catch(e){ window._myAccess={role:'viewer',can_history:true,active:true}; }
     }
     function isAdmin(){ return (window._myAccess&&window._myAccess.role==='admin'); }
