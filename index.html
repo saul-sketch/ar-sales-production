@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f172a">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>AR Sales Production</title>
+  <title>KPIs de Producción — Auto Republic</title>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js"></script>
   <style>
     :root{
@@ -247,7 +247,7 @@
   <div class="gate" id="screen-gate" style="display:none;">
     <div class="gate-card">
       <div class="gate-mark">AR</div>
-      <h1>Producción de Ventas</h1>
+      <h1>KPIs de Producción</h1>
       <p>Esta página se abre <b>desde tu CRM (GoHighLevel)</b>. Tu sesión se reconoce automáticamente.</p>
       <p style="font-size:12px;color:var(--gray-400);margin-top:14px;">Si llegaste aquí directo, entra desde el menú de Auto Republic dentro de GoHighLevel.</p>
     </div>
@@ -259,7 +259,7 @@
       <div class="brand">
         <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Menú">☰</button>
         <div class="brand-mark">AR</div>
-        <div class="brand-text"><h1>Producción de Ventas</h1><small id="last-refresh">—</small></div>
+        <div class="brand-text"><h1>KPIs de Producción</h1><small id="last-refresh">—</small></div>
       </div>
       <div class="header-actions">
         <button class="report-btn" id="report-btn" style="display:none;" onclick="navigate('report')">📝 Reporte de hoy</button>
@@ -445,8 +445,18 @@
         try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=30`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
         window._closerSet=new Set(agents.filter(a=>a.role==='closer').map(a=>a.name.toLowerCase()));
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
-        // Equipo autoritativo desde ar_agents (etiquetas del team management): setter→Call Center; closer+locación→Closers Orlando/Kissimmee.
-        window._agentTeam={};agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
+        // Equipo AUTORITATIVO desde crm_roster (etiquetas reales del WaveDialer, refrescadas solas):
+        // call-center → Call Center; closers-orlando/kissimmee → sus equipos. Fallback a ar_agents solo si un nombre no matchea.
+        window._agentTeam={};
+        try{
+          const rr=await fetch(`${SUPA_URL}/rest/v1/crm_roster?select=name,team&active=eq.true`,{headers:SUPA_HEADERS});
+          const roster=await rr.json();
+          const map={'call-center':'cc','closers-orlando':'orlando','closers-kissimmee':'kissimmee'};
+          (roster||[]).forEach(p=>{const ln=(p.name||'').toLowerCase();if(p.team&&map[p.team])window._agentTeam[ln]=map[p.team];});
+          window._crmActive=new Set((roster||[]).map(p=>(p.name||'').toLowerCase()));
+        }catch(e){}
+        // Fallback ar_agents para nombres viejos que aún no matchean el CRM (se irá limpiando solo con la unificación).
+        agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(window._agentTeam[ln])return;if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
@@ -759,9 +769,9 @@
         <div class="page-title">🗂️ Management View</div>
         <div class="page-sub">Producción separada por equipo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca a una persona para su perfil</div>
         ${missing?`<div class="section-card" style="border:1.5px solid #fde68a;background:#fffbeb;">
-          <p style="margin:0;font-size:13px;color:#92400e;">⚠️ ${missing} persona(s) sin etiqueta de equipo — clasificadas de forma preliminar. Agrégalas en el team management (rol + locación) para dejarlas exactas.</p>
+          <p style="margin:0;font-size:13px;color:#92400e;">⚠️ ${missing} persona(s) sin equipo asignado en el WaveDialer todavía. Etiquétalas en el <b>team management del WaveDialer</b> (Call Center / Closers Orlando / Closers Kissimmee) y caen solas en su grupo.</p>
         </div>`:`<div class="section-card" style="border:1.5px solid #bbf7d0;background:#f0fdf4;">
-          <p style="margin:0;font-size:13px;color:#166534;">✅ Equipos según las etiquetas oficiales: setter → Call Center · closer → su locación (Orlando / Kissimmee).</p>
+          <p style="margin:0;font-size:13px;color:#166534;">✅ Equipos según las etiquetas reales del WaveDialer.</p>
         </div>`}
         ${card('Call Center','📞','#3b82f6',buckets.cc)}
         ${card('Closers Orlando','🎯','#f97316',buckets.orlando)}
