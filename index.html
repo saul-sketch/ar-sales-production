@@ -408,11 +408,14 @@
         // Map dialer_user_id → sales_report_name
         const byUid={};(window._mapping||[]).forEach(m=>{byUid[m.dialer_user_id]=m.sales_report_name;});
         const byName={};(window._mapping||[]).forEach(m=>{if(m.dialer_name)byName[m.dialer_name.toLowerCase()]=m.sales_report_name;});
-        const out={}; // sales_report_name(lower) → {calls, contacts, minutes, sms, appointments}
+        const rosterById=window._rosterById||{};
+        const out={}; // nombre canónico(lower) → {calls, contacts, minutes, sms, appointments}
         dialerAgents.forEach(a=>{
-          const sr=byUid[a.agentUserId]||(a.agentName?byName[a.agentName.toLowerCase()]:null);
-          if(!sr)return;
-          const k=sr.toLowerCase();
+          // Fuente principal = ID del CRM (cubre a TODOS los del dialer). Fallbacks: tablita vieja, luego el nombre del dialer.
+          let nm = rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
+          if(!nm)return;
+          nm = canonName(nm);
+          const k=nm.toLowerCase();
           if(!out[k])out[k]={calls:0,contacts:0,minutes:0,sms:0,appointments:0};
           out[k].calls+=a.calls||0;out[k].contacts+=a.contacts||0;out[k].minutes+=a.minutes||0;out[k].sms+=a.sms||0;out[k].appointments+=a.appointments||0;
         });
@@ -447,13 +450,18 @@
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
         // Equipo AUTORITATIVO desde crm_roster (etiquetas reales del WaveDialer, refrescadas solas):
         // call-center → Call Center; closers-orlando/kissimmee → sus equipos. Fallback a ar_agents solo si un nombre no matchea.
-        window._agentTeam={};
+        window._agentTeam={}; window._rosterById={};
         try{
-          const rr=await fetch(`${SUPA_URL}/rest/v1/crm_roster?select=name,team&active=eq.true`,{headers:SUPA_HEADERS});
+          // TODAS las filas (activas e inactivas) — así el dialer mapea a CUALQUIER persona del CRM por su ID.
+          const rr=await fetch(`${SUPA_URL}/rest/v1/crm_roster?select=crm_user_id,name,team,active`,{headers:SUPA_HEADERS});
           const roster=await rr.json();
           const map={'call-center':'cc','closers-orlando':'orlando','closers-kissimmee':'kissimmee'};
-          (roster||[]).forEach(p=>{const ln=(p.name||'').toLowerCase();if(p.team&&map[p.team])window._agentTeam[ln]=map[p.team];});
-          window._crmActive=new Set((roster||[]).map(p=>(p.name||'').toLowerCase()));
+          (roster||[]).forEach(p=>{
+            if(p.crm_user_id)window._rosterById[p.crm_user_id]=p.name;
+            const ln=(p.name||'').toLowerCase();
+            if(p.team&&map[p.team])window._agentTeam[ln]=map[p.team];
+          });
+          window._crmActive=new Set((roster||[]).filter(p=>p.active).map(p=>(p.name||'').toLowerCase()));
         }catch(e){}
         // Fallback ar_agents para nombres viejos que aún no matchean el CRM (se irá limpiando solo con la unificación).
         agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(window._agentTeam[ln])return;if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
