@@ -408,13 +408,13 @@
         // Map dialer_user_id → sales_report_name
         const byUid={};(window._mapping||[]).forEach(m=>{byUid[m.dialer_user_id]=m.sales_report_name;});
         const byName={};(window._mapping||[]).forEach(m=>{if(m.dialer_name)byName[m.dialer_name.toLowerCase()]=m.sales_report_name;});
-        const out={}; // sales_report_name(lower) → {calls, appointments}
+        const out={}; // sales_report_name(lower) → {calls, contacts, minutes, sms, appointments}
         dialerAgents.forEach(a=>{
           const sr=byUid[a.agentUserId]||(a.agentName?byName[a.agentName.toLowerCase()]:null);
           if(!sr)return;
           const k=sr.toLowerCase();
-          if(!out[k])out[k]={calls:0,appointments:0};
-          out[k].calls+=a.calls||0;out[k].appointments+=a.appointments||0;
+          if(!out[k])out[k]={calls:0,contacts:0,minutes:0,sms:0,appointments:0};
+          out[k].calls+=a.calls||0;out[k].contacts+=a.contacts||0;out[k].minutes+=a.minutes||0;out[k].sms+=a.sms||0;out[k].appointments+=a.appointments||0;
         });
         window._dialerByAgent=out;
         window._dialerOk=true;
@@ -743,74 +743,110 @@
       const c = d>0 ? efColor(r,target) : 'var(--gray-300)';
       return `<td style="text-align:center;"><span style="font-weight:800;color:${c};">${d>0?r.toFixed(0)+'%':'—'}</span><div style="font-size:10px;color:var(--gray-400);">${fmtShare(n)}/${fmtShare(d)}</div></td>`;
     }
+    function efTeamLabel(t){return {cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee'}[t]||'Sin equipo';}
+    function setEfMode(m){window._efMode=m;render();}
     function renderEfectividad(s){
       const reports=s.reports;
-      // 1) Conversión por origen (equipo)
+      const dialer=window._dialerByAgent||{};
+      const teamMap=window._agentTeam||{};
+      const names=window._agentNames||{};
+      const mode=window._efMode||'equipo';
+
+      // Conversión por origen (equipo)
       const CH=['Self-gen','Call Center','Walk-in'];
       const chStat={}; CH.concat(['Sin dato']).forEach(c=>chStat[c]={visits:0,applied:0,approved:0,sold:0,profit:0});
-      // 2) Por closer: propio (self-gen que él trae) vs traído (call center / walk-in / otro)
-      const byCloser={}; // name -> {propio:{...}, traido:{...}}
-      const eC=n=>byCloser[n]||(byCloser[n]={name:n,propio:{visits:0,applied:0,approved:0,sold:0,profit:0},traido:{visits:0,applied:0,approved:0,sold:0,profit:0}});
+
+      // Por persona: esfuerzo (dialer) + embudo (reportes)
+      const P={};
+      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,visitas:0,aplico:0,noAplico:0,aprob:0,neg:0,vend:0,monto:0,pv:0,ps:0,tv:0,ts:0}; return P[k];};
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(names[k]||k); o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;o.citas+=d.appointments||0;});
       reports.forEach(r=>(r.visits||[]).forEach(v=>{
-        const ch=efChannelOf(v);
-        const cs=chStat[ch]; cs.visits++; if(v.applied===true)cs.applied++; if(v.result==='approved')cs.approved++; if(v.sale===true){cs.sold++;cs.profit+=v.net_profit||0;}
-        const propio = (ch==='Self-gen');
-        [clean(v.closer),clean(v.closer2)].forEach(c=>{ if(!c)return;
-          const o=eC(c)[propio?'propio':'traido'];
-          o.visits++; if(v.applied===true)o.applied++; if(v.result==='approved')o.approved++; if(v.sale===true){o.sold++;o.profit+=v.net_profit||0;}
+        const ch=efChannelOf(v); const cs=chStat[ch]; cs.visits++; if(v.applied===true)cs.applied++; if(v.result==='approved')cs.approved++; if(v.sale===true){cs.sold++;cs.profit+=v.net_profit||0;}
+        const selfgen=(ch==='Self-gen');
+        [clean(v.closer),clean(v.closer2)].forEach(c=>{ if(!c)return; const o=eP(c);
+          o.visitas++; if(v.applied===true)o.aplico++; else o.noAplico++;
+          if(v.result==='approved')o.aprob++; if(v.result==='denied')o.neg++;
+          if(v.sale===true){o.vend++;o.monto+=v.net_profit||0;}
+          if(selfgen){o.pv++;if(v.sale===true)o.ps++;}else{o.tv++;if(v.sale===true)o.ts++;}
         });
       }));
+      const people=Object.values(P);
 
-      const chCard=CH.map(ch=>{
-        const d=chStat[ch]; if(!d.visits) return '';
-        const color = ch==='Self-gen'?'#10b981':ch==='Call Center'?'#3b82f6':'#f97316';
-        return `<div class="section-card" style="border-top:3px solid ${color};">
-          <h3>${ch} <span style="font-weight:600;color:var(--gray-400);font-size:13px;">· ${d.visits} visitas</span></h3>
-          <div class="table-wrap"><table><thead><tr>
-            <th>Visitas</th><th style="text-align:center;">Aplicó ${tip('Meta 70-80%')}</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió (visita→venta) ${tip('Meta 20-30%')}</th><th style="text-align:right;">Monto</th>
-          </tr></thead><tbody><tr>
-            <td style="font-weight:800;font-size:16px;">${d.visits}</td>
-            ${efPctCell(d.applied,d.visits,70)}
-            ${efPctCell(d.approved,d.applied,70)}
-            ${efPctCell(d.sold,d.visits,20)}
-            <td style="text-align:right;font-weight:700;color:var(--green);">${fmtMoney(d.profit)}</td>
-          </tr></tbody></table></div>
-        </div>`;
-      }).join('');
+      // Celdas del embudo completo (esfuerzo → visitas → aplicó → negó → cierre → visita-venta → monto)
+      const num=(n)=>n?n.toLocaleString('en-US'):'—';
+      const funnelCells=o=>`
+        <td style="text-align:right;">${num(o.calls)}</td>
+        <td style="text-align:right;">${o.contacts||'—'}</td>
+        <td style="text-align:right;">${num(o.minutes)}</td>
+        <td style="text-align:right;">${num(o.sms)}</td>
+        <td style="text-align:right;">${o.citas||'—'}</td>
+        <td style="text-align:right;font-weight:700;">${o.visitas||'—'}</td>
+        ${efPctCell(o.aplico,o.visitas,70)}
+        <td style="text-align:center;color:${o.neg?'var(--red)':'var(--gray-300)'};font-weight:700;">${o.neg||'—'}</td>
+        ${efPctCell(o.vend,o.aprob,70)}
+        ${efPctCell(o.vend,o.visitas,20)}
+        <td style="text-align:right;color:var(--green);font-weight:700;">${o.monto?fmtMoney(o.monto):'—'}</td>`;
+      const head=`<tr>
+        <th>${mode==='equipo'?'Equipo':'Vendedor'}</th>
+        <th style="text-align:right;">📞</th><th style="text-align:right;">💬</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th>
+        <th style="text-align:right;">📅cita</th><th style="text-align:right;">🚶vis</th>
+        <th style="text-align:center;">Aplicó ${tip('Aplicó ÷ visitas. Meta 70-80%. Si baja: no calificó bien por teléfono o no lo trabajaron en piso.')}</th>
+        <th style="text-align:center;">Negó ${tip('Aprobados negados. Muchos = tráfico basura / mala prospección.')}</th>
+        <th style="text-align:center;">Cierre ${tip('Ventas ÷ aprobados. Meta 70-80%.')}</th>
+        <th style="text-align:center;">Vis→Venta ${tip('Ventas ÷ visitas. Meta 20-30%.')}</th>
+        <th style="text-align:right;">Monto</th>
+      </tr>`;
 
-      const closers=Object.values(byCloser).filter(c=>c.propio.visits+c.traido.visits>0)
-        .sort((a,b)=>(b.propio.sold+b.traido.sold)-(a.propio.sold+a.traido.sold));
-      const rows=closers.map(c=>{
-        const pv=c.propio.visits, tv=c.traido.visits;
-        const prC=pv>0?efColor(c.propio.sold/pv*100,20):'var(--gray-300)';
-        const trC=tv>0?efColor(c.traido.sold/tv*100,20):'var(--gray-300)';
+      let mainTable='';
+      if(mode==='equipo'){
+        const T={}; ['cc','orlando','kissimmee','sin'].forEach(t=>T[t]={name:efTeamLabel(t==='sin'?null:t),n:0,calls:0,contacts:0,minutes:0,sms:0,citas:0,visitas:0,aplico:0,noAplico:0,aprob:0,neg:0,vend:0,monto:0});
+        people.forEach(o=>{const t=o.team||'sin';const a=T[t];a.n++;['calls','contacts','minutes','sms','citas','visitas','aplico','noAplico','aprob','neg','vend','monto'].forEach(f=>a[f]+=o[f]);});
+        const order=['cc','orlando','kissimmee','sin'];
+        const trs=order.filter(t=>T[t].n>0).map(t=>{const a=T[t];const col=t==='cc'?'#3b82f6':t==='orlando'?'#f97316':t==='kissimmee'?'#8b5cf6':'#94a3b8';
+          return `<tr class="clickable-row" onclick="setEfMode('individual')" style="border-left:3px solid ${col};">
+            <td style="font-weight:800;">${a.name} <span style="font-weight:500;color:var(--gray-400);font-size:11px;">· ${a.n}</span></td>${funnelCells(a)}</tr>`;}).join('');
+        mainTable=`<div class="section-card"><p class="section-sub">Cada equipo, embudo completo. Toca una fila para ver a su gente.</p>
+          <div class="table-wrap"><table><thead>${head}</thead><tbody>${trs||'<tr><td colspan="12" class="empty">Sin data</td></tr>'}</tbody></table></div></div>`;
+      } else {
+        const rows=people.filter(o=>o.visitas>0||o.calls>0).sort((a,b)=>b.vend-a.vend||b.visitas-a.visitas).map(o=>`
+          <tr class="clickable-row" onclick="goProfile('${escapeAttr(o.name)}','close')">
+            <td><span style="color:var(--blue);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(o.name)}</span><div style="font-size:10px;color:var(--gray-400);">${efTeamLabel(o.team)}</div></td>
+            ${funnelCells(o)}</tr>`).join('');
+        mainTable=`<div class="section-card"><p class="section-sub">Cada vendedor, embudo completo de arriba a abajo. Toca para ver su perfil.</p>
+          <div class="table-wrap"><table><thead>${head}</thead><tbody>${rows||'<tr><td colspan="12" class="empty">Sin data</td></tr>'}</tbody></table></div></div>`;
+      }
+
+      const chCard=CH.map(ch=>{const d=chStat[ch]; if(!d.visits) return ''; const color=ch==='Self-gen'?'#10b981':ch==='Call Center'?'#3b82f6':'#f97316';
+        return `<div class="section-card" style="border-top:3px solid ${color};"><h3>${ch} <span style="font-weight:600;color:var(--gray-400);font-size:13px;">· ${d.visits} visitas</span></h3>
+          <div class="table-wrap"><table><thead><tr><th>Visitas</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Cierre</th><th style="text-align:center;">Vis→Venta</th><th style="text-align:right;">Monto</th></tr></thead>
+          <tbody><tr><td style="font-weight:800;font-size:16px;">${d.visits}</td>${efPctCell(d.applied,d.visits,70)}${efPctCell(d.sold,d.approved,70)}${efPctCell(d.sold,d.visits,20)}<td style="text-align:right;font-weight:700;color:var(--green);">${fmtMoney(d.profit)}</td></tr></tbody></table></div></div>`;}).join('');
+
+      // Propio vs de piso
+      const ppl=people.filter(c=>c.pv+c.tv>0).sort((a,b)=>(b.ps+b.ts)-(a.ps+a.ts));
+      const ppRows=ppl.map(c=>{const prC=c.pv>0?efColor(c.ps/c.pv*100,20):'var(--gray-300)';const trC=c.tv>0?efColor(c.ts/c.tv*100,20):'var(--gray-300)';
         return `<tr class="clickable-row" onclick="goProfile('${escapeAttr(c.name)}','close')">
-          <td><span style="color:var(--blue);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(c.name)}</span></td>
-          <td style="text-align:center;">${pv||'—'}</td>
-          <td style="text-align:center;"><span style="font-weight:800;color:${prC};">${pv>0?(c.propio.sold/pv*100).toFixed(0)+'%':'—'}</span></td>
-          <td style="text-align:center;">${tv||'—'}</td>
-          <td style="text-align:center;"><span style="font-weight:800;color:${trC};">${tv>0?(c.traido.sold/tv*100).toFixed(0)+'%':'—'}</span></td>
-          <td style="text-align:right;font-weight:700;">${fmtShare(c.propio.sold+c.traido.sold)}</td>
-        </tr>`;
-      }).join('');
+          <td><span style="color:var(--blue);text-decoration:underline;">${escapeHtml(c.name)}</span></td>
+          <td style="text-align:center;">${c.pv||'—'}</td><td style="text-align:center;"><span style="font-weight:800;color:${prC};">${c.pv>0?(c.ps/c.pv*100).toFixed(0)+'%':'—'}</span></td>
+          <td style="text-align:center;">${c.tv||'—'}</td><td style="text-align:center;"><span style="font-weight:800;color:${trC};">${c.tv>0?(c.ts/c.tv*100).toFixed(0)+'%':'—'}</span></td>
+          <td style="text-align:right;font-weight:700;">${fmtShare(c.ps+c.ts)}</td></tr>`;}).join('');
+
+      const tabBtn=(m,l)=>`<button onclick="setEfMode('${m}')" style="padding:8px 16px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;border:1px solid ${mode===m?'var(--primary)':'var(--gray-200)'};background:${mode===m?'var(--primary)':'white'};color:${mode===m?'white':'var(--gray-600)'};">${l}</button>`;
 
       document.getElementById('main-content').innerHTML=`
         <div class="page-title">🎯 Efectividad</div>
-        <div class="page-sub">Conversión por origen y por vendedor · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · semáforo vs tus umbrales</div>
+        <div class="page-sub">Embudo completo · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · semáforo vs tus umbrales</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">${tabBtn('equipo','Por equipo')}${tabBtn('individual','Por individual')}</div>
         <div class="section-card" style="border:1.5px solid #bfdbfe;background:#eff6ff;">
-          <p style="margin:0;font-size:13px;color:#1e40af;">🟢 verde = cumple meta · 🟡 amarillo = cerca · 🔴 rojo = bajo. Metas: <b>Aplicó 70-80%</b>, <b>Aprobado→Venta 70-80%</b>, <b>Visita→Venta 20-30%</b>.</p>
+          <p style="margin:0;font-size:13px;color:#1e40af;">🟢 cumple meta · 🟡 cerca · 🔴 bajo. Metas: <b>Aplicó 70-80%</b> · <b>Cierre 70-80%</b> · <b>Visita→Venta 20-30%</b>. La columna <b>Negó</b> te dice si el problema es tráfico basura y no cierre.</p>
         </div>
-        <div style="font-size:15px;font-weight:800;margin:6px 0 4px;color:var(--gray-700);">Conversión por origen (equipo)</div>
-        ${chCard || '<div class="section-card"><div class="empty">Sin visitas en este periodo</div></div>'}
-        <div style="font-size:15px;font-weight:800;margin:14px 0 4px;color:var(--gray-700);">Efectividad por vendedor</div>
+        ${mainTable}
+        <div style="font-size:15px;font-weight:800;margin:14px 0 4px;color:var(--gray-700);">Conversión por origen (equipo)</div>
+        ${chCard || '<div class="section-card"><div class="empty">Sin visitas</div></div>'}
+        <div style="font-size:15px;font-weight:800;margin:14px 0 4px;color:var(--gray-700);">Cliente propio vs de piso</div>
         <div class="section-card">
-          <p class="section-sub"><b>Propio</b> = cliente self-gen que él trajo (producción personal, embudo completo). <b>De piso</b> = cliente traído por call center / otro / walk-in (efectividad pura de cierre).</p>
-          <div class="table-wrap"><table><thead><tr>
-            <th>Vendedor</th>
-            <th style="text-align:center;">Propio ${tip('Visitas self-gen que él trajo')}</th><th style="text-align:center;">% venta propio</th>
-            <th style="text-align:center;">De piso ${tip('Visitas traídas por otros que él cerró')}</th><th style="text-align:center;">% venta piso</th>
-            <th style="text-align:right;">Ventas</th>
-          </tr></thead><tbody>${rows||'<tr><td colspan="6" class="empty">Sin data por vendedor</td></tr>'}</tbody></table></div>
+          <p class="section-sub"><b>Propio</b> = self-gen que él trajo (producción personal). <b>De piso</b> = traído por otros que él cerró (cierre puro).</p>
+          <div class="table-wrap"><table><thead><tr><th>Vendedor</th><th style="text-align:center;">Propio</th><th style="text-align:center;">% venta propio</th><th style="text-align:center;">De piso</th><th style="text-align:center;">% venta piso</th><th style="text-align:right;">Ventas</th></tr></thead>
+          <tbody>${ppRows||'<tr><td colspan="6" class="empty">Sin data</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
