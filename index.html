@@ -305,7 +305,17 @@
       if(/^\d{4}-\d{2}$/.test(filterPeriod)||filterPeriod==='mtd'||filterPeriod==='qtd')return 'day';
       return 'month';
     }
-    async function setPeriod(p){filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
+    function periodAllowed(p){
+      if(canHistory())return true;
+      const cm=new Date().toISOString().slice(0,7);
+      if(['mtd','last:1','last:3','last:7'].includes(p))return true;
+      if(p===quincena1Key()||p===quincena2Key())return true;
+      if(p.startsWith('range:')){const x=p.split(':');return x[1].slice(0,7)===cm&&x[2].slice(0,7)===cm;}
+      return false; // 'all', 'qtd', meses pasados
+    }
+    async function setPeriod(p){
+      if(!periodAllowed(p)){ alert('Tu acceso es solo del mes actual. Pídele a Saúl permiso de históricos.'); return; }
+      filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await loadDialer();if(mc)mc.style.opacity='';render();}
     function setLoc(l){filterLoc=l;render();}
     function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
@@ -357,8 +367,29 @@
       const rb=document.getElementById('user-role');
       rb.textContent=me.role;rb.className='role-badge '+me.role;
       view=me.role==='manager'?'produccion':'profile';
+      await touchAccess();
       await refresh();
     });
+
+    // ===== Control de acceso: registra quién abre + sus permisos (Settings → Users) =====
+    const DASH='produccion';
+    window._myAccess=null;
+    function accessKey(){ return DASH+':'+((me.email||me.name||'').toLowerCase().trim()); }
+    async function touchAccess(){
+      try{
+        const ident=(me.email||me.name||'').toLowerCase().trim(); if(!ident)return;
+        const ukey=accessKey();
+        // registra última vez (NO toca rol/permisos)
+        await fetch(`${SUPA_URL}/rest/v1/dashboard_access?on_conflict=ukey`,{method:'POST',
+          headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
+          body:JSON.stringify({dashboard:DASH,ukey,name:me.name,email:me.email||null,last_seen_at:new Date().toISOString(),last_period:filterPeriod})});
+        const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?ukey=eq.${encodeURIComponent(ukey)}&select=role,can_history,active`,{headers:SUPA_HEADERS});
+        const rows=await r.json();
+        window._myAccess=rows[0]||{role:'viewer',can_history:true,active:true};
+      }catch(e){ window._myAccess={role:'viewer',can_history:true,active:true}; }
+    }
+    function isAdmin(){ return (window._myAccess&&window._myAccess.role==='admin'); }
+    function canHistory(){ return !window._myAccess || window._myAccess.can_history!==false; }
 
     // Read identity from GHL custom-link query params, or dev override
     function resolveIdentity(){
@@ -603,6 +634,7 @@
       if(view==='report'){renderReportForm();return;}
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
+      if(view==='settings'){renderSettings();return;}
       if(view==='produccion'){renderProduccion(s);return;}
       if(view==='resumen'){renderResumen(s);return;}
       if(view==='setters'){renderRoleView(s,'setter');return;}
@@ -637,6 +669,7 @@
       if(isMgr){
         nav=[{v:'produccion',ico:'📋',lbl:'Producción'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
              {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'📅',lbl:'Calendario'}];
+        if(isAdmin())nav.push({v:'settings',ico:'⚙️',lbl:'Settings'});
       }else{
         nav=[{v:'profile',ico:'⭐',lbl:'Mi producción',self:true},
              {v:me.role==='closer'?'closers':'setters',ico:'🏆',lbl:'Mi ranking'}];
@@ -771,6 +804,76 @@
       return `<td style="text-align:center;"><span style="font-weight:800;color:${c};">${d>0?r.toFixed(0)+'%':'—'}</span><div style="font-size:10px;color:var(--gray-400);">${fmtShare(n)}/${fmtShare(d)}</div></td>`;
     }
     function efTeamLabel(t){return {cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee'}[t]||'Sin equipo';}
+
+    // ===== SETTINGS → USERS: quién tiene acceso, última vez, permisos, crear usuario+clave =====
+    function fmtLastSeen(ts){
+      if(!ts)return '<span style="color:var(--gray-400);">nunca</span>';
+      const d=new Date(ts), diff=(Date.now()-d.getTime())/1000;
+      let s; if(diff<60)s='hace segundos'; else if(diff<3600)s='hace '+Math.floor(diff/60)+' min'; else if(diff<86400)s='hace '+Math.floor(diff/3600)+' h'; else if(diff<172800)s='ayer'; else s='hace '+Math.floor(diff/86400)+' días';
+      return `${s} <span style="color:var(--gray-400);font-size:11px;">(${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')})</span>`;
+    }
+    function accessBadge(t){ const m={user:['Usuario + clave','#3b82f6'],ghl:['Desde el CRM','#10b981'],link:['Link directo','#f59e0b']}; const[l,c]=m[t]||['—','#94a3b8']; return `<span style="font-size:11px;font-weight:700;color:${c};background:${c}1a;padding:3px 8px;border-radius:6px;white-space:nowrap;">${l}</span>`; }
+    async function saReload(){ if(view==='settings')renderSettings(); }
+    async function saPatch(id,patch){ try{ await fetch(`${SUPA_URL}/rest/v1/dashboard_access?id=eq.${id}`,{method:'PATCH',headers:{...SUPA_HEADERS,Prefer:'return=minimal'},body:JSON.stringify(patch)}); }catch(e){} saReload(); }
+    async function saDelete(id,name){ if(!confirm('¿Quitar acceso a '+name+'?'))return; try{ await fetch(`${SUPA_URL}/rest/v1/dashboard_access?id=eq.${id}`,{method:'DELETE',headers:SUPA_HEADERS}); }catch(e){} saReload(); }
+    function saAddUserPrompt(){
+      const o=document.getElementById('sa-modal'); if(o)o.remove();
+      document.body.insertAdjacentHTML('beforeend',`<div id="sa-modal" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;" onclick="if(event.target===this)this.remove()">
+        <div style="background:white;border-radius:16px;padding:20px;max-width:420px;width:100%;margin:auto;box-shadow:0 24px 60px rgba(0,0,0,.28);">
+          <div style="font-weight:800;font-size:16px;margin-bottom:4px;">Nuevo usuario con clave</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-bottom:14px;">Entra con usuario + contraseña (sin depender del CRM).</div>
+          <input id="sa-name" placeholder="Nombre" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:8px;font-family:inherit;font-size:14px;">
+          <input id="sa-email" placeholder="Email (opcional)" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:8px;font-family:inherit;font-size:14px;">
+          <input id="sa-pass" placeholder="Contraseña" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:12px;font-family:inherit;font-size:14px;">
+          <div style="display:flex;justify-content:flex-end;gap:8px;">
+            <button onclick="document.getElementById('sa-modal').remove()" style="padding:9px 14px;background:var(--gray-100);border:none;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;">Cancelar</button>
+            <button onclick="saAddUser()" style="padding:9px 14px;background:var(--primary);color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;">Crear</button>
+          </div>
+        </div></div>`);
+      setTimeout(()=>document.getElementById('sa-name').focus(),50);
+    }
+    async function saAddUser(){
+      const name=document.getElementById('sa-name').value.trim(), email=document.getElementById('sa-email').value.trim(), pass=document.getElementById('sa-pass').value.trim();
+      if(!name||!pass){ alert('Nombre y contraseña son obligatorios'); return; }
+      const ident=(email||name).toLowerCase();
+      const row={dashboard:DASH,ukey:DASH+':'+ident,name,email:email||null,access_type:'user',password:pass,role:'viewer',can_history:true,active:true};
+      try{ const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?on_conflict=ukey`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(row)}); if(!r.ok){alert('Error creando usuario');} }catch(e){alert('Error: '+e.message);}
+      const m=document.getElementById('sa-modal'); if(m)m.remove(); saReload();
+    }
+    async function renderSettings(){
+      const mc=document.getElementById('main-content');
+      mc.innerHTML=`<div class="page-title">⚙️ Settings — Usuarios</div><div class="page-sub">Quién tiene acceso a KPIs de Producción · última vez que abrió · permisos</div><div class="section-card"><div class="empty">Cargando…</div></div>`;
+      let rows=[];
+      try{ const r=await fetch(`${SUPA_URL}/rest/v1/dashboard_access?dashboard=eq.${DASH}&select=*&order=last_seen_at.desc.nullslast`,{headers:SUPA_HEADERS}); rows=await r.json(); }catch(e){}
+      const roleOpt=(cur)=>['admin','manager','viewer'].map(r=>`<option value="${r}" ${cur===r?'selected':''}>${r}</option>`).join('');
+      const body=rows.map(u=>{
+        const pass = u.access_type==='user' ? `<span style="font-family:monospace;font-size:12px;">${escapeHtml(u.password||'')}</span>` : '<span style="color:var(--gray-300);">—</span>';
+        return `<tr style="border-top:1px solid var(--gray-200);${u.active===false?'opacity:.5;':''}">
+          <td style="font-weight:700;">${escapeHtml(u.name||'—')}<div style="font-size:11px;color:var(--gray-400);font-weight:400;">${escapeHtml(u.email||'')}</div></td>
+          <td>${accessBadge(u.access_type)}</td>
+          <td>${u.access_type==='user'?pass:''}</td>
+          <td><select onchange="saPatch('${u.id}',{role:this.value})" style="font-size:12px;padding:4px 6px;border:1px solid var(--gray-200);border-radius:6px;font-family:inherit;">${roleOpt(u.role)}</select></td>
+          <td style="font-size:12px;">${fmtLastSeen(u.last_seen_at)}</td>
+          <td style="text-align:center;"><input type="checkbox" ${u.can_history!==false?'checked':''} onchange="saPatch('${u.id}',{can_history:this.checked})" title="Puede ver meses pasados / histórico"></td>
+          <td style="text-align:center;"><input type="checkbox" ${u.active!==false?'checked':''} onchange="saPatch('${u.id}',{active:this.checked})" title="Acceso activo"></td>
+          <td style="text-align:center;"><button onclick="saDelete('${u.id}','${escapeAttr(u.name||'')}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;" title="Quitar">🗑</button></td>
+        </tr>`;
+      }).join('');
+      mc.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+          <div><div class="page-title">⚙️ Settings — Usuarios</div>
+          <div class="page-sub">Quién tiene acceso a KPIs de Producción · última vez que abrió · permisos</div></div>
+          <button onclick="saAddUserPrompt()" style="padding:9px 15px;background:var(--primary);color:white;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px;">+ Agregar usuario</button>
+        </div>
+        <div class="section-card" style="border:1.5px solid #bfdbfe;background:#eff6ff;">
+          <p style="margin:0;font-size:12.5px;color:#1e40af;"><b>Tipos de acceso:</b> <b>Desde el CRM</b> = abre desde GoHighLevel · <b>Link directo</b> = con el enlace que compartiste · <b>Usuario + clave</b> = entra con contraseña. <b>Históricos</b> ON = ve meses pasados; OFF = solo el mes actual.</p>
+        </div>
+        <div class="section-card" style="padding:0;overflow:hidden;">
+          <div class="table-wrap"><table><thead><tr>
+            <th>Usuario</th><th>Acceso</th><th>Clave</th><th>Rol</th><th>Última vez</th><th style="text-align:center;">Históricos</th><th style="text-align:center;">Activo</th><th></th>
+          </tr></thead><tbody>${body||'<tr><td colspan="8" class="empty">Sin usuarios aún</td></tr>'}</tbody></table></div>
+        </div>`;
+    }
 
     // ===== PRODUCCIÓN — por persona, por día, se abre hacia abajo por origen, drill en cada punto =====
     window._prodOpen = window._prodOpen || new Set();
