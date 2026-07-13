@@ -287,7 +287,7 @@
     let allReports=[];
     let filterPeriod='mtd',filterLoc='all'; // default = THIS MONTH (sales goals are monthly, not rolling 30d)
     let lbTab='closer',lbSort={key:'sold',dir:-1};
-    let view='resumen';          // global | setters | closers | recon | profile
+    let view='produccion';          // global | setters | closers | recon | profile
     let profileCtx=null;        // {name, facet}
     let teamFilter='';
     let monthsExpanded=false;   // sidebar month list collapsed by default
@@ -356,7 +356,7 @@
       document.getElementById('user-name').textContent=me.name;
       const rb=document.getElementById('user-role');
       rb.textContent=me.role;rb.className='role-badge '+me.role;
-      view=me.role==='manager'?'resumen':'profile';
+      view=me.role==='manager'?'produccion':'profile';
       await refresh();
     });
 
@@ -594,6 +594,7 @@
       if(view==='report'){renderReportForm();return;}
       const s=buildStats();
       if(view==='profile'&&profileCtx){renderProfilePage(s);return;}
+      if(view==='produccion'){renderProduccion(s);return;}
       if(view==='resumen'){renderResumen(s);return;}
       if(view==='setters'){renderRoleView(s,'setter');return;}
       if(view==='closers'){renderRoleView(s,'closer');return;}
@@ -601,7 +602,7 @@
       if(view==='efectividad'){renderEfectividad(s);return;}
       if(view==='global'){renderGlobal(s);return;}
       if(view==='recon'){renderReconView();return;}
-      renderResumen(s); // default (managers)
+      renderProduccion(s); // default (managers)
     }
 
     // ===== Sidebar =====
@@ -625,7 +626,7 @@
       const isMgr=me.role==='manager';
       let nav;
       if(isMgr){
-        nav=[{v:'resumen',ico:'🎯',lbl:'Resumen'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
+        nav=[{v:'produccion',ico:'📋',lbl:'Producción'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
              {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'📅',lbl:'Calendario'}];
       }else{
         nav=[{v:'profile',ico:'⭐',lbl:'Mi producción',self:true},
@@ -761,6 +762,90 @@
       return `<td style="text-align:center;"><span style="font-weight:800;color:${c};">${d>0?r.toFixed(0)+'%':'—'}</span><div style="font-size:10px;color:var(--gray-400);">${fmtShare(n)}/${fmtShare(d)}</div></td>`;
     }
     function efTeamLabel(t){return {cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee'}[t]||'Sin equipo';}
+
+    // ===== PRODUCCIÓN — por persona, por día, se abre hacia abajo por origen, drill en cada punto =====
+    window._prodOpen = window._prodOpen || new Set();
+    window._prodRec = window._prodRec || {};
+    function toggleProd(k){ if(window._prodOpen.has(k))window._prodOpen.delete(k); else window._prodOpen.add(k); render(); }
+    function prodOrigin(v){ if(v.scheduled_by==='Self-gen'||v.subgen===true)return 'Propio'; if(v.scheduled_by==='Call Center')return 'Call Center'; if(v.scheduled_by==='Walk-in')return 'Walk-in'; return 'Otro'; }
+    function prodAgg(recs){ const a={visitas:recs.length,aplico:0,noap:0,aprob:0,neg:0,vend:0,monto:0};
+      recs.forEach(v=>{ if(v.applied===true)a.aplico++; else a.noap++; if(v.result==='approved')a.aprob++; if(v.result==='denied')a.neg++; if(v.sale===true){a.vend++;a.monto+=v.net_profit||0;} }); return a; }
+    // Modal de detalle: lista los registros detrás de un número (ventas, visitas, etc.)
+    function prodShow(recKey,title){
+      const recs=window._prodRec[recKey]||[];
+      const body = recs.length ? recs.map(v=>{
+        const st=clean(v.setter); const sg=(v.scheduled_by==='Self-gen'||v.subgen===true);
+        const trajo = st&&st!=='N/A' ? escapeHtml(st) : (sg?'Self-gen':'Walk-in');
+        const badge = v.sale===true?'<span style="color:var(--green);font-weight:700;">Vendió'+(v.net_profit?' · '+fmtMoney(v.net_profit):'')+'</span>':v.result==='approved'?'<span style="color:#8b5cf6;">Aprobó</span>':v.result==='denied'?'<span style="color:var(--red);">Negó</span>':v.applied===true?'<span style="color:var(--blue);">Aplicó</span>':'<span style="color:var(--gray-400);">Vino</span>';
+        const d=new Date((v._date||'')+'T00:00:00'); const dn=isNaN(d)?'':`${d.getDate()}/${d.getMonth()+1}`;
+        return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--gray-100);">
+          <div><div style="font-weight:600;">${escapeHtml(v.name||'—')}</div><div style="font-size:11px;color:var(--gray-500);">${dn} · agendó: ${trajo}${v._loc?' · '+String(v._loc).slice(0,3):''}</div></div>
+          <div style="text-align:right;font-size:13px;">${badge}</div></div>`;
+      }).join('') : '<div class="empty">Sin registros</div>';
+      const o=document.getElementById('prod-modal'); if(o)o.remove();
+      document.body.insertAdjacentHTML('beforeend',`<div id="prod-modal" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">
+        <div style="background:white;border-radius:16px;padding:18px;max-width:520px;width:100%;margin:auto;box-shadow:0 24px 60px rgba(0,0,0,.28);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-weight:800;font-size:15px;">${title} <span style="color:var(--gray-400);font-weight:500;">· ${recs.length}</span></div>
+          <button onclick="this.closest('#prod-modal').remove()" style="background:var(--gray-100);border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;">✕</button></div>
+          ${body}
+        </div></div>`);
+    }
+    let _prodKey=0;
+    function prodCell(recs,filterFn,label,color,tgtNum,tgtDen){
+      const list=filterFn?recs.filter(filterFn):recs;
+      const k='pk'+(_prodKey++); window._prodRec[k]=list;
+      const n=list.length;
+      return {k,n,list};
+    }
+    function renderProduccion(s){
+      const dialer=window._dialerByAgent||{}, teamMap=window._agentTeam||{}, names=window._agentNames||{};
+      window._prodRec={}; _prodKey=0;
+      // Por persona: registros de visita agrupados por origen
+      const P={};
+      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,citas:0,recs:[]}; return P[k];};
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.citas+=d.appointments||0;});
+      s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
+        [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; eP(c).recs.push({...v,_date:r.date,_loc:r.location}); });
+      }));
+      const people=Object.values(P).filter(p=>p.recs.length>0||p.calls>0)
+        .sort((a,b)=>prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length);
+
+      const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
+      // Fila de números drilleable para un set de registros
+      const cells=(recs,dim)=>{
+        const kV=prodCell(recs,null).k, kAp=prodCell(recs,v=>v.applied===true).k, kApr=prodCell(recs,v=>v.result==='approved').k, kVe=prodCell(recs,v=>v.sale===true).k;
+        const a=prodAgg(recs);
+        const cell=(n,key,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}>${n||'—'}</td>`;
+        return `${cell(a.visitas,kV)}${cell(a.aplico,kAp)}<td style="text-align:center;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr)}${cell(a.vend,kVe,'font-weight:700;')}<td style="text-align:right;color:var(--green);font-weight:700;">${a.monto?fmtMoney(a.monto):'—'}</td>`;
+      };
+      const rows=people.map(p=>{
+        const open=window._prodOpen.has(p.key);
+        const a=prodAgg(p.recs);
+        const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);">
+          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)}</div></td>
+          <td style="text-align:right;">${p.calls?p.calls.toLocaleString('en-US'):'—'}</td>
+          <td style="text-align:right;">${p.citas||'—'}</td>
+          ${cells(p.recs,p.name)}
+        </tr>`;
+        let detail='';
+        if(open){
+          detail=ORIGINS.map(o=>{const rs=p.recs.filter(v=>prodOrigin(v)===o); if(!rs.length)return ''; const ag=prodAgg(rs);
+            return `<tr style="background:var(--gray-50);font-size:12px;">
+              <td style="padding-left:26px;color:var(--gray-600);">${o}</td><td></td><td></td>${cells(rs,p.name+' · '+o)}</tr>`;}).join('');
+        }
+        return summary+detail;
+      }).join('');
+
+      document.getElementById('main-content').innerHTML=`
+        <div class="page-title">Producción diaria</div>
+        <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · usa ‹ Día › arriba para moverte · toca una persona para abrir su desglose · toca un número para ver el detalle</div>
+        <div class="section-card" style="padding:0;overflow:hidden;">
+          <div class="table-wrap"><table><thead><tr>
+            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">📅cita</th>
+            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:right;">Monto</th>
+          </tr></thead><tbody>${rows||'<tr><td colspan="9" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+        </div>`;
+    }
 
     // ===== RESUMEN — landing del manager: pulso del embudo + a quién coachear + equipos =====
     function renderResumen(s){
