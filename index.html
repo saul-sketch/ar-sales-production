@@ -589,6 +589,7 @@
       if(view==='setters'){renderRoleView(s,'setter');return;}
       if(view==='closers'){renderRoleView(s,'closer');return;}
       if(view==='mgmt'){renderMgmtView(s);return;}
+      if(view==='efectividad'){renderEfectividad(s);return;}
       if(view==='recon'){renderReconView();return;}
       renderGlobal(s); // default (managers)
     }
@@ -607,7 +608,7 @@
       const isMgr=me.role==='manager';
       let nav;
       if(isMgr){
-        nav=[{v:'global',ico:'📊',lbl:'Global'},{v:'mgmt',ico:'🗂️',lbl:'Management View'},{v:'setters',ico:'📞',lbl:'Setters'},
+        nav=[{v:'global',ico:'📊',lbl:'Global'},{v:'efectividad',ico:'🎯',lbl:'Efectividad'},{v:'mgmt',ico:'🗂️',lbl:'Management View'},{v:'setters',ico:'📞',lbl:'Setters'},
              {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'🔗',lbl:'Reconciliación'}];
       }else{
         nav=[{v:'profile',ico:'⭐',lbl:'Mi producción',self:true},
@@ -727,6 +728,92 @@
       const out={};Object.keys(loc).forEach(k=>{out[k]=loc[k].Kissimmee>loc[k].Orlando?'kissimmee':'orlando';});
       return out;
     }
+    // ===== Efectividad: conversión por origen + closer (cliente propio vs de piso) =====
+    // Umbrales del PDF de managers: Visita→Aplicó 70-80% · Aprobado→Venta 70-80% · Visita→Venta 20-30%.
+    function efChannelOf(v){
+      if(v.scheduled_by==='Self-gen'||v.subgen===true) return 'Self-gen';
+      if(v.scheduled_by==='Call Center') return 'Call Center';
+      if(v.scheduled_by==='Walk-in') return 'Walk-in';
+      return 'Sin dato';
+    }
+    // Devuelve color semáforo según el % y el umbral meta.
+    function efColor(rate,target){ if(rate>=target) return 'var(--green)'; if(rate>=target*0.7) return '#f59e0b'; return 'var(--red)'; }
+    function efPctCell(n,d,target){
+      const r = d>0 ? (n/d*100) : 0;
+      const c = d>0 ? efColor(r,target) : 'var(--gray-300)';
+      return `<td style="text-align:center;"><span style="font-weight:800;color:${c};">${d>0?r.toFixed(0)+'%':'—'}</span><div style="font-size:10px;color:var(--gray-400);">${fmtShare(n)}/${fmtShare(d)}</div></td>`;
+    }
+    function renderEfectividad(s){
+      const reports=s.reports;
+      // 1) Conversión por origen (equipo)
+      const CH=['Self-gen','Call Center','Walk-in'];
+      const chStat={}; CH.concat(['Sin dato']).forEach(c=>chStat[c]={visits:0,applied:0,approved:0,sold:0,profit:0});
+      // 2) Por closer: propio (self-gen que él trae) vs traído (call center / walk-in / otro)
+      const byCloser={}; // name -> {propio:{...}, traido:{...}}
+      const eC=n=>byCloser[n]||(byCloser[n]={name:n,propio:{visits:0,applied:0,approved:0,sold:0,profit:0},traido:{visits:0,applied:0,approved:0,sold:0,profit:0}});
+      reports.forEach(r=>(r.visits||[]).forEach(v=>{
+        const ch=efChannelOf(v);
+        const cs=chStat[ch]; cs.visits++; if(v.applied===true)cs.applied++; if(v.result==='approved')cs.approved++; if(v.sale===true){cs.sold++;cs.profit+=v.net_profit||0;}
+        const propio = (ch==='Self-gen');
+        [clean(v.closer),clean(v.closer2)].forEach(c=>{ if(!c)return;
+          const o=eC(c)[propio?'propio':'traido'];
+          o.visits++; if(v.applied===true)o.applied++; if(v.result==='approved')o.approved++; if(v.sale===true){o.sold++;o.profit+=v.net_profit||0;}
+        });
+      }));
+
+      const chCard=CH.map(ch=>{
+        const d=chStat[ch]; if(!d.visits) return '';
+        const color = ch==='Self-gen'?'#10b981':ch==='Call Center'?'#3b82f6':'#f97316';
+        return `<div class="section-card" style="border-top:3px solid ${color};">
+          <h3>${ch} <span style="font-weight:600;color:var(--gray-400);font-size:13px;">· ${d.visits} visitas</span></h3>
+          <div class="table-wrap"><table><thead><tr>
+            <th>Visitas</th><th style="text-align:center;">Aplicó ${tip('Meta 70-80%')}</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió (visita→venta) ${tip('Meta 20-30%')}</th><th style="text-align:right;">Monto</th>
+          </tr></thead><tbody><tr>
+            <td style="font-weight:800;font-size:16px;">${d.visits}</td>
+            ${efPctCell(d.applied,d.visits,70)}
+            ${efPctCell(d.approved,d.applied,70)}
+            ${efPctCell(d.sold,d.visits,20)}
+            <td style="text-align:right;font-weight:700;color:var(--green);">${fmtMoney(d.profit)}</td>
+          </tr></tbody></table></div>
+        </div>`;
+      }).join('');
+
+      const closers=Object.values(byCloser).filter(c=>c.propio.visits+c.traido.visits>0)
+        .sort((a,b)=>(b.propio.sold+b.traido.sold)-(a.propio.sold+a.traido.sold));
+      const rows=closers.map(c=>{
+        const pv=c.propio.visits, tv=c.traido.visits;
+        const prC=pv>0?efColor(c.propio.sold/pv*100,20):'var(--gray-300)';
+        const trC=tv>0?efColor(c.traido.sold/tv*100,20):'var(--gray-300)';
+        return `<tr class="clickable-row" onclick="goProfile('${escapeAttr(c.name)}','close')">
+          <td><span style="color:var(--blue);text-decoration:underline;text-underline-offset:2px;">${escapeHtml(c.name)}</span></td>
+          <td style="text-align:center;">${pv||'—'}</td>
+          <td style="text-align:center;"><span style="font-weight:800;color:${prC};">${pv>0?(c.propio.sold/pv*100).toFixed(0)+'%':'—'}</span></td>
+          <td style="text-align:center;">${tv||'—'}</td>
+          <td style="text-align:center;"><span style="font-weight:800;color:${trC};">${tv>0?(c.traido.sold/tv*100).toFixed(0)+'%':'—'}</span></td>
+          <td style="text-align:right;font-weight:700;">${fmtShare(c.propio.sold+c.traido.sold)}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('main-content').innerHTML=`
+        <div class="page-title">🎯 Efectividad</div>
+        <div class="page-sub">Conversión por origen y por vendedor · ${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · semáforo vs tus umbrales</div>
+        <div class="section-card" style="border:1.5px solid #bfdbfe;background:#eff6ff;">
+          <p style="margin:0;font-size:13px;color:#1e40af;">🟢 verde = cumple meta · 🟡 amarillo = cerca · 🔴 rojo = bajo. Metas: <b>Aplicó 70-80%</b>, <b>Aprobado→Venta 70-80%</b>, <b>Visita→Venta 20-30%</b>.</p>
+        </div>
+        <div style="font-size:15px;font-weight:800;margin:6px 0 4px;color:var(--gray-700);">Conversión por origen (equipo)</div>
+        ${chCard || '<div class="section-card"><div class="empty">Sin visitas en este periodo</div></div>'}
+        <div style="font-size:15px;font-weight:800;margin:14px 0 4px;color:var(--gray-700);">Efectividad por vendedor</div>
+        <div class="section-card">
+          <p class="section-sub"><b>Propio</b> = cliente self-gen que él trajo (producción personal, embudo completo). <b>De piso</b> = cliente traído por call center / otro / walk-in (efectividad pura de cierre).</p>
+          <div class="table-wrap"><table><thead><tr>
+            <th>Vendedor</th>
+            <th style="text-align:center;">Propio ${tip('Visitas self-gen que él trajo')}</th><th style="text-align:center;">% venta propio</th>
+            <th style="text-align:center;">De piso ${tip('Visitas traídas por otros que él cerró')}</th><th style="text-align:center;">% venta piso</th>
+            <th style="text-align:right;">Ventas</th>
+          </tr></thead><tbody>${rows||'<tr><td colspan="6" class="empty">Sin data por vendedor</td></tr>'}</tbody></table></div>
+        </div>`;
+    }
+
     function renderMgmtView(s){
       const domLoc=closerDominantLoc();
       const at=window._agentTeam||{};
