@@ -1003,7 +1003,7 @@
         const sub=p=>p?`<div style="font-size:11px;color:var(--gray-700);font-weight:600;line-height:1.2;">${p}</div>`:'';
         const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:${num}px;font-weight:700;">${n?fmtW(n):'—'}</span>${n?sub(pct):''}</td>`;
         const cancelCell=`<td style="text-align:center;font-size:${num}px;color:${a.cancel?'var(--red)':'var(--gray-300)'};" title="ventas que luego se cancelaron">${a.cancel?fmtW(a.cancel):'—'}</td>`;
-        return `${cell(a.visitas,kV,citas>0&&a.visitas<=citas?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg?fmtW(a.neg):'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}${cancelCell}<td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
+        return `${cell(a.visitas,kV,citas>0&&a.visitas<=citas?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg?fmtW(a.neg):'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}${cancelCell}<td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);" title="ventas activas (sin canceladas) ÷ visitas">${a.visitas?pctTxt(a.vend-a.cancel,a.visitas):'—'}</td>`;
       };
       const dcell=(v,cls,num)=>`<td style="text-align:right;font-size:${num||15}px;${cls||''}">${v||'—'}</td>`;
       const rows=people.map(p=>{
@@ -1033,6 +1033,30 @@
         return summary+detail;
       }).join('');
 
+      // ===== Gran total del equipo (suma de todos los mostrados) — para no promediar % a mano =====
+      const gt={calls:0,contacts:0,minutes:0,sms:0,citas:0};
+      const ga={visitas:0,aplico:0,neg:0,aprob:0,vend:0,cancel:0};
+      people.forEach(p=>{ gt.calls+=p.calls||0; gt.contacts+=p.contacts||0; gt.minutes+=p.minutes||0; gt.sms+=p.sms||0; gt.citas+=p.citas||0;
+        const a=prodAgg(p.recs); ga.visitas+=a.visitas; ga.aplico+=a.aplico; ga.neg+=a.neg; ga.aprob+=a.aprob; ga.vend+=a.vend; ga.cancel+=a.cancel; });
+      const num0=n=>n?n.toLocaleString('en-US'):'—';
+      const fc=(n,pct)=>`<td style="text-align:center;color:#fff;"><span style="font-size:16px;font-weight:800;">${n?fmtW(n):'—'}</span>${pct?`<div style="font-size:11px;color:#cbd5e1;font-weight:600;">${pct}</div>`:''}</td>`;
+      const tName={all:'Todos',cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee',none:'Sin equipo'}[teamF]||'Todos';
+      const footer=`<tr style="background:var(--gray-800);border-top:3px solid var(--gray-900);">
+        <td style="font-weight:800;color:#fff;white-space:nowrap;">Σ TOTAL EQUIPO<div style="font-size:10px;color:#cbd5e1;font-weight:400;">${people.length} personas · ${tName}</div></td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.calls)}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.contacts||'—'}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.minutes)}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.sms)}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.citas||'—'}</td>
+        ${fc(ga.visitas)}
+        ${fc(ga.aplico, ga.visitas?pctTxt(ga.aplico,ga.visitas):'')}
+        <td style="text-align:center;color:#fca5a5;font-size:16px;font-weight:800;">${ga.neg?fmtW(ga.neg):'—'}</td>
+        ${fc(ga.aprob, ga.aplico?pctTxt(ga.aprob,ga.aplico):'')}
+        ${fc(ga.vend, ga.aprob?pctTxt(ga.vend,ga.aprob):'')}
+        <td style="text-align:center;color:#fca5a5;font-size:16px;font-weight:800;">${ga.cancel?fmtW(ga.cancel):'—'}</td>
+        <td style="text-align:center;color:#fff;font-size:16px;font-weight:800;border-left:1px solid var(--gray-600);" title="ventas activas ÷ visitas">${ga.visitas?pctTxt(ga.vend-ga.cancel,ga.visitas):'—'}</td>
+      </tr>`;
+
       const teamPill=(t,l)=>`<button onclick="setProdTeam('${t}')" style="padding:7px 14px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${teamF===t?'var(--primary)':'var(--gray-200)'};background:${teamF===t?'var(--primary)':'white'};color:${teamF===t?'white':'var(--gray-600)'};">${l}</button>`;
       document.getElementById('main-content').innerHTML=`
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
@@ -1044,7 +1068,7 @@
           <div class="table-wrap"><table><thead><tr>
             <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th>
             <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;">Cancel.</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
-          </tr></thead><tbody>${rows||'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+          </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
