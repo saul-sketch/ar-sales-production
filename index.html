@@ -976,7 +976,11 @@
       const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,recs:[]}; return P[k];};
       Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0; o.citas+=d.appointments||0;});
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
-        [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; eP(c).recs.push({...v,_date:r.date,_loc:r.location}); });
+        const rec={...v,_date:r.date,_loc:r.location};
+        const c1=canonName(clean(v.closer)), c2=canonName(clean(v.closer2));
+        [c1,c2].forEach(c=>{ if(!c)return; eP(c).recs.push(rec); });
+        // La cita de Call Center también cuenta para el setter que la agendó (mismo embudo que ve el closer)
+        if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&st!==c1&&st!==c2) eP(st).recs.push(rec); }
       }));
       const teamF=window._prodTeam||'all';
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
@@ -993,7 +997,7 @@
         const a=prodAgg(recs);
         const sub=p=>p?`<div style="font-size:11px;color:var(--gray-700);font-weight:600;line-height:1.2;">${p}</div>`:'';
         const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:${num}px;font-weight:700;">${n||'—'}</span>${n?sub(pct):''}</td>`;
-        return `${cell(a.visitas,kV,citas>0?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}<td style="text-align:right;color:var(--green);font-weight:700;font-size:${num}px;">${a.monto?fmtMoney(a.monto):'—'}</td><td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
+        return `${cell(a.visitas,kV,citas>0&&a.visitas<=citas?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}<td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
       };
       const dcell=(v,cls,num)=>`<td style="text-align:right;font-size:${num||15}px;${cls||''}">${v||'—'}</td>`;
       const rows=people.map(p=>{
@@ -1001,21 +1005,18 @@
         const byO={}; ORIGINS.forEach(o=>byO[o]=p.recs.filter(v=>prodOrigin(v)===o));
         const calls=p.calls?p.calls.toLocaleString('en-US'):'—', mins=p.minutes?p.minutes.toLocaleString('en-US'):'—', sms=p.sms?p.sms.toLocaleString('en-US'):'—';
         // Línea principal = Propio (self-gen): lleva el esfuerzo propio (llamadas, contactos, citas)
-        const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);">
-          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · Propio</div></td>
+        // Colapsado = TOTAL (todo lo que produjo). Al abrir se ve el desglose por origen.
+        const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':''}">
+          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)}${open?' · TOTAL':''}</div></td>
           ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}
-          ${cells(byO['Propio'],p.name+' · Propio',p.citas)}
+          ${cells(p.recs,p.name+' · Total',p.citas)}
         </tr>`;
         let detail='';
         if(open){
-          detail=['Call Center','Walk-in','Otro'].map(o=>{const rs=byO[o]; if(!rs.length)return '';
+          detail=[['Propio','Propio'],['Call Center','Call Center'],['Walk-in','Walk-in'],['Otro','Otro']].map(([o,lbl])=>{const rs=byO[o]; if(!rs.length)return '';
+            const cc=o==='Propio'?p.citas:0;
             return `<tr style="background:var(--gray-50);">
-              <td style="padding-left:26px;color:var(--gray-500);font-size:12px;">${o}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o,0,13)}</tr>`;}).join('');
-          // Total = sumatoria de todos los orígenes → banda oscura, el cierre de la suma
-          detail+=`<tr style="background:var(--gray-200);font-weight:800;border-top:2px solid var(--gray-300);">
-            <td style="padding-left:26px;color:var(--gray-900);font-size:13px;letter-spacing:.03em;">TOTAL</td>
-            ${dcell(calls,'font-weight:800;',15)}${dcell(p.contacts,'font-weight:800;',15)}${dcell(mins,'font-weight:800;',15)}${dcell(sms,'font-weight:800;',15)}${dcell(p.citas,'font-weight:800;',15)}
-            ${cells(p.recs,p.name+' · Total',p.citas,15)}</tr>`;
+              <td style="padding-left:26px;color:var(--gray-500);font-size:12px;">${lbl}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o,cc,13)}</tr>`;}).join('');
         }
         return summary+detail;
       }).join('');
@@ -1030,8 +1031,8 @@
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
             <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th>
-            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:right;">Monto</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
-          </tr></thead><tbody>${rows||'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
+          </tr></thead><tbody>${rows||'<tr><td colspan="12" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
