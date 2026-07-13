@@ -962,8 +962,8 @@
       window._prodRec={}; _prodKey=0;
       // Por persona: registros de visita agrupados por origen
       const P={};
-      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,citas:0,recs:[]}; return P[k];};
-      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.citas+=d.appointments||0;});
+      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,recs:[]}; return P[k];};
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0; o.citas+=d.appointments||0;});
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
         [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; eP(c).recs.push({...v,_date:r.date,_loc:r.location}); });
       }));
@@ -987,6 +987,9 @@
         const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);">
           <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)}</div></td>
           <td style="text-align:right;">${p.calls?p.calls.toLocaleString('en-US'):'—'}</td>
+          <td style="text-align:right;">${p.contacts||'—'}</td>
+          <td style="text-align:right;">${p.minutes?p.minutes.toLocaleString('en-US'):'—'}</td>
+          <td style="text-align:right;">${p.sms?p.sms.toLocaleString('en-US'):'—'}</td>
           <td style="text-align:right;">${p.citas||'—'}</td>
           ${cells(p.recs,p.name)}
         </tr>`;
@@ -994,7 +997,7 @@
         if(open){
           detail=ORIGINS.map(o=>{const rs=p.recs.filter(v=>prodOrigin(v)===o); if(!rs.length)return ''; const ag=prodAgg(rs);
             return `<tr style="background:var(--gray-50);font-size:12px;">
-              <td style="padding-left:26px;color:var(--gray-600);">${o}</td><td></td><td></td>${cells(rs,p.name+' · '+o)}</tr>`;}).join('');
+              <td style="padding-left:26px;color:var(--gray-600);">${o}</td><td></td><td></td><td></td><td></td><td></td>${cells(rs,p.name+' · '+o)}</tr>`;}).join('');
         }
         return summary+detail;
       }).join('');
@@ -1008,9 +1011,9 @@
         </div>
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
-            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">📅cita</th>
+            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th>
             <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:right;">Monto</th>
-          </tr></thead><tbody>${rows||'<tr><td colspan="9" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+          </tr></thead><tbody>${rows||'<tr><td colspan="12" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
