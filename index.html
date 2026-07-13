@@ -378,12 +378,11 @@
     // así que se permite ver sin crear usuario. El navegador garantiza ancestorOrigins (no se puede falsear).
     function loadedInsideCRM(){
       try{
-        if(window.self===window.top) return false; // no está en iframe
-        const crm=/smartwavedigital|leadconnector|gohighlevel|msgsndr|highlevel/i;
-        const origins=window.location.ancestorOrigins?Array.from(window.location.ancestorOrigins):[];
-        if(origins.some(o=>crm.test(o))) return true;
-        return crm.test(document.referrer||'');
-      }catch(e){ return false; }
+        // Embebido = está dentro de un iframe. El dashboard SOLO se embebe desde el menú del CRM,
+        // así que estar en cualquier iframe = viene del CRM (autenticado). Un extraño que pega la URL
+        // la abre a nivel top (no iframe) → cae al chequeo de usuario.
+        return window.self !== window.top;
+      }catch(e){ return true; } // si ni siquiera se puede leer window.top, es un iframe cross-origin (CRM)
     }
     // REGLA: DENTRO del CRM → entra libre (sin usuario). POR FUERA → requiere usuario (admin/manager o usuario+clave).
     async function authorizeAccess(){
