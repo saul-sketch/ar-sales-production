@@ -939,8 +939,12 @@
     window._prodTeam = window._prodTeam || 'all';
     function setProdTeam(t){ window._prodTeam=t; render(); }
     function prodOrigin(v){ if(v.scheduled_by==='Self-gen'||v.subgen===true)return 'Propio'; if(v.scheduled_by==='Call Center')return 'Call Center'; if(v.scheduled_by==='Walk-in')return 'Walk-in'; return 'Otro'; }
-    function prodAgg(recs){ const a={visitas:recs.length,aplico:0,noap:0,aprob:0,neg:0,vend:0,monto:0};
-      recs.forEach(v=>{ if(v.applied===true)a.aplico++; else a.noap++; if(v.result==='approved')a.aprob++; if(v.result==='denied')a.neg++; if(v.sale===true){a.vend++;a.monto+=v.net_profit||0;} }); return a; }
+    // Peso _w por registro: venta en pareja (2 closers) = 0.5 a cada uno. Sin _w = 1 (retrocompatible).
+    // vend cuenta TODAS las ventas (aunque se cancelen); cancel = las que luego se cancelaron.
+    function prodAgg(recs){ const a={visitas:0,aplico:0,noap:0,aprob:0,neg:0,vend:0,cancel:0,monto:0};
+      recs.forEach(v=>{ const w=v._w||1; a.visitas+=w; if(v.applied===true)a.aplico+=w; else a.noap+=w; if(v.result==='approved')a.aprob+=w; if(v.result==='denied')a.neg+=w; if(v.sale===true){a.vend+=w;a.monto+=(v.net_profit||0)*w;if(v.cancelled===true)a.cancel+=w;} }); return a; }
+    // Formatea números con peso: entero si es entero, si no un decimal (ej. 7.5)
+    function fmtW(n){ return Number.isInteger(n)?n:(Math.round(n*10)/10).toFixed(1); }
     // Modal de detalle: lista los registros detrás de un número (ventas, visitas, etc.)
     function prodShow(recKey,title){
       const recs=window._prodRec[recKey]||[];
@@ -976,11 +980,12 @@
       const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,recs:[]}; return P[k];};
       Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0; o.citas+=d.appointments||0;});
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
-        const rec={...v,_date:r.date,_loc:r.location};
-        const c1=canonName(clean(v.closer)), c2=canonName(clean(v.closer2));
-        [c1,c2].forEach(c=>{ if(!c)return; eP(c).recs.push(rec); });
-        // La cita de Call Center también cuenta para el setter que la agendó (mismo embudo que ve el closer)
-        if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&st!==c1&&st!==c2) eP(st).recs.push(rec); }
+        const closers=[...new Set([canonName(clean(v.closer)),canonName(clean(v.closer2))].filter(Boolean))];
+        const w = closers.length ? 1/closers.length : 1;   // venta/visita en pareja = mitad y mitad
+        const rec={...v,_date:r.date,_loc:r.location,_w:w};
+        closers.forEach(c=>{ eP(c).recs.push(rec); });
+        // La cita de Call Center también cuenta (crédito completo) para el setter que la agendó
+        if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&!closers.includes(st)) eP(st).recs.push({...rec,_w:1}); }
       }));
       const teamF=window._prodTeam||'all';
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
@@ -996,8 +1001,9 @@
         const kV=prodCell(recs,null).k, kAp=prodCell(recs,v=>v.applied===true).k, kApr=prodCell(recs,v=>v.result==='approved').k, kVe=prodCell(recs,v=>v.sale===true).k;
         const a=prodAgg(recs);
         const sub=p=>p?`<div style="font-size:11px;color:var(--gray-700);font-weight:600;line-height:1.2;">${p}</div>`:'';
-        const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:${num}px;font-weight:700;">${n||'—'}</span>${n?sub(pct):''}</td>`;
-        return `${cell(a.visitas,kV,citas>0&&a.visitas<=citas?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}<td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
+        const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:${num}px;font-weight:700;">${n?fmtW(n):'—'}</span>${n?sub(pct):''}</td>`;
+        const cancelCell=`<td style="text-align:center;font-size:${num}px;color:${a.cancel?'var(--red)':'var(--gray-300)'};" title="ventas que luego se cancelaron">${a.cancel?fmtW(a.cancel):'—'}</td>`;
+        return `${cell(a.visitas,kV,citas>0&&a.visitas<=citas?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:${num}px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg?fmtW(a.neg):'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}${cancelCell}<td style="text-align:center;font-weight:700;font-size:${num}px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
       };
       const dcell=(v,cls,num)=>`<td style="text-align:right;font-size:${num||15}px;${cls||''}">${v||'—'}</td>`;
       const rows=people.map(p=>{
@@ -1037,8 +1043,8 @@
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
             <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th>
-            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
-          </tr></thead><tbody>${rows||'<tr><td colspan="12" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;">Cancel.</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
+          </tr></thead><tbody>${rows||'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
