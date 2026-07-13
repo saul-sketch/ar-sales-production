@@ -997,10 +997,11 @@
       // Citas = agendadas por la persona (createdBy), fuente ghl_appointments. Crea también a quien solo agendó.
       const appts=window._apptsByName||{};
       Object.values(appts).forEach(a=>{ eP(a.name); });
+      let _vid=0;
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
         const closers=[...new Set([canonName(clean(v.closer)),canonName(clean(v.closer2))].filter(Boolean))];
         const w = closers.length ? 1/closers.length : 1;   // venta/visita en pareja = mitad y mitad
-        const rec={...v,_date:r.date,_loc:r.location,_w:w};
+        const rec={...v,_date:r.date,_loc:r.location,_w:w,_vid:_vid++};   // _vid = visita única (para no doble-contar en el total)
         closers.forEach(c=>{ eP(c).recs.push(rec); });
         // La cita de Call Center también cuenta (crédito completo) para el setter que la agendó
         if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&!closers.includes(st)) eP(st).recs.push({...rec,_w:1}); }
@@ -1068,16 +1069,25 @@
         return summary+detail;
       }).join('');
 
-      // ===== Gran total del equipo (suma de todos los mostrados) — para no promediar % a mano =====
+      // ===== Gran total del equipo — cada venta/visita se cuenta UNA sola vez (dedupe por _vid),
+      //       aunque aparezca en el closer y en el setter. + desglose por origen (suma al total). =====
       const gt={calls:0,contacts:0,minutes:0,sms:0,citas:0};
+      people.forEach(p=>{ gt.calls+=p.calls||0; gt.contacts+=p.contacts||0; gt.minutes+=p.minutes||0; gt.sms+=p.sms||0; gt.citas+=p.citas||0; });
       const ga={visitas:0,aplico:0,neg:0,aprob:0,vend:0,cancel:0};
-      people.forEach(p=>{ gt.calls+=p.calls||0; gt.contacts+=p.contacts||0; gt.minutes+=p.minutes||0; gt.sms+=p.sms||0; gt.citas+=p.citas||0;
-        const a=prodAgg(p.recs); ga.visitas+=a.visitas; ga.aplico+=a.aplico; ga.neg+=a.neg; ga.aprob+=a.aprob; ga.vend+=a.vend; ga.cancel+=a.cancel; });
+      const byOri={Propio:{vis:0,vend:0},'Call Center':{vis:0,vend:0},'Walk-in':{vis:0,vend:0},Otro:{vis:0,vend:0}};
+      const _seenV=new Set();
+      people.forEach(p=>p.recs.forEach(v=>{ if(_seenV.has(v._vid))return; _seenV.add(v._vid);
+        ga.visitas++; if(v.applied===true)ga.aplico++; if(v.result==='denied')ga.neg++; if(v.result==='approved')ga.aprob++;
+        const active=v.sale===true&&v.cancelled!==true;
+        if(v.sale===true){ga.vend++; if(v.cancelled===true)ga.cancel++;}
+        const o=byOri[prodOrigin(v)]||byOri.Otro; o.vis++; if(active)o.vend++; }));
       const num0=n=>n?n.toLocaleString('en-US'):'—';
       const fc=(n,pct)=>`<td style="text-align:center;color:#fff;"><span style="font-size:16px;font-weight:800;">${n?fmtW(n):'—'}</span>${pct?`<div style="font-size:11px;color:#cbd5e1;font-weight:600;">${pct}</div>`:''}</td>`;
       const tName={all:'Todos',cc:'Call Center',orlando:'Closers Orlando',kissimmee:'Closers Kissimmee',none:'Sin equipo'}[teamF]||'Todos';
+      const activeTot=ga.vend-ga.cancel;
+      const oriChip=(lbl,o)=>o.vis?`<span style="display:inline-block;margin-right:16px;white-space:nowrap;"><b style="color:#fff;">${lbl}</b> <span style="color:#fff;font-weight:800;">${o.vend}</span><span style="color:#9ca3af;"> vend · ${o.vis} vis</span></span>`:'';
       const footer=`<tr style="background:var(--gray-800);border-top:3px solid var(--gray-900);">
-        <td style="font-weight:800;color:#fff;white-space:nowrap;">Σ TOTAL EQUIPO<div style="font-size:10px;color:#cbd5e1;font-weight:400;">${people.length} personas · ${tName}</div></td>
+        <td style="font-weight:800;color:#fff;white-space:nowrap;">Σ TOTAL EQUIPO<div style="font-size:10px;color:#cbd5e1;font-weight:400;">${people.length} personas · ${tName} · cada venta 1 vez</div></td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.calls)}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.contacts||'—'}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.minutes)}</td>
@@ -1089,8 +1099,13 @@
         ${fc(ga.aprob, ga.aplico?pctTxt(ga.aprob,ga.aplico):'')}
         ${fc(ga.vend, ga.aprob?pctTxt(ga.vend,ga.aprob):'')}
         <td style="text-align:center;color:#fca5a5;font-size:16px;font-weight:800;">${ga.cancel?fmtW(ga.cancel):'—'}</td>
-        <td style="text-align:center;color:#fff;font-size:16px;font-weight:800;border-left:1px solid var(--gray-600);" title="ventas activas ÷ visitas">${ga.visitas?pctTxt(ga.vend-ga.cancel,ga.visitas):'—'}</td>
-      </tr>`;
+        <td style="text-align:center;color:#fff;font-size:16px;font-weight:800;border-left:1px solid var(--gray-600);" title="ventas activas ÷ visitas">${ga.visitas?pctTxt(activeTot,ga.visitas):'—'}</td>
+      </tr>
+      <tr style="background:var(--gray-800);border-top:1px solid var(--gray-700);">
+        <td colspan="13" style="padding:5px 10px 9px;font-size:11px;">
+          <span style="color:#9ca3af;text-transform:uppercase;letter-spacing:.04em;margin-right:12px;">Origen de las ${activeTot} ventas activas:</span>
+          ${oriChip('Propio',byOri.Propio)}${oriChip('Call Center',byOri['Call Center'])}${oriChip('Walk-in',byOri['Walk-in'])}${oriChip('Otro',byOri.Otro)}
+        </td></tr>`;
 
       const teamPill=(t,l)=>`<button onclick="setProdTeam('${t}')" style="padding:7px 14px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${teamF===t?'var(--primary)':'var(--gray-200)'};background:${teamF===t?'var(--primary)':'white'};color:${teamF===t?'white':'var(--gray-600)'};">${l}</button>`;
       document.getElementById('main-content').innerHTML=`
