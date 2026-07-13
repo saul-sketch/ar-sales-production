@@ -457,6 +457,12 @@
         }catch(e){}
         // Fallback ar_agents para nombres viejos que aún no matchean el CRM (se irá limpiando solo con la unificación).
         agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(window._agentTeam[ln])return;if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
+        // Mapa de equivalencias de nombres (evita duplicados: "Fabiola"/"Fabiola Lorio" → "Fabiola Iorio").
+        window._alias={};
+        try{
+          const ar=await fetch(`${SUPA_URL}/rest/v1/crm_name_alias?select=alias,canonical_name,team`,{headers:SUPA_HEADERS});
+          (await ar.json()||[]).forEach(a=>{window._alias[a.alias]={canon:a.canonical_name,team:a.team};});
+        }catch(e){}
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
@@ -533,6 +539,8 @@
     }
     function perDay(total,days){return days>0?Math.round(total/days):0;}
     function clean(s){if(!s)return null;const t=String(s).trim();return ['','n/a','na','—','-'].includes(t.toLowerCase())?null:t;}
+    // Unifica variantes de nombre a la persona canónica del CRM (evita duplicados en TODAS las vistas).
+    function canonName(n){if(!n)return n;const a=(window._alias||{})[String(n).toLowerCase().trim()];return a?a.canon:n;}
     function fmtShare(x){return Number.isInteger(x)?String(x):x.toFixed(1);}
     function fmtMoney(n){return '$'+Math.round(n||0).toLocaleString('en-US');}
     function pct(n,d){return d>0?(n/d*100):0;}
@@ -548,7 +556,7 @@
       const eC=n=>close[n]||(close[n]={name:n,visits:0,applied:0,approved:0,denied:0,sold:0,profit:0,selfgen:0});
       reports.forEach(r=>{
         (r.visits||[]).forEach(v=>{
-          const setter=clean(v.setter),c1=clean(v.closer),c2=clean(v.closer2);
+          const setter=canonName(clean(v.setter)),c1=canonName(clean(v.closer)),c2=canonName(clean(v.closer2));
           const sb=v.scheduled_by;
           const selfgen=sb==='Self-gen'||v.subgen===true;
           // Determine prospector
@@ -596,13 +604,20 @@
 
     // ===== Sidebar =====
     function teamList(){
-      const names=new Set();
-      (window._closerSet||new Set()).forEach(n=>names.add(n));
-      (window._setterSet||new Set()).forEach(n=>names.add(n));
-      return [...names].map(ln=>{
+      const raw=new Set();
+      (window._closerSet||new Set()).forEach(n=>raw.add(n));
+      (window._setterSet||new Set()).forEach(n=>raw.add(n));
+      // Unifica variantes al nombre canónico y dedup (evita "Fabiola" + "Fabiola Lorio" como 2 personas).
+      const byCanon={};
+      raw.forEach(ln=>{
+        const disp=(window._agentNames&&window._agentNames[ln])||ln;
+        const canon=canonName(disp);
         const isCloser=(window._closerSet||new Set()).has(ln);
-        return {name:(window._agentNames&&window._agentNames[ln])||ln,role:isCloser?'closer':'setter',facet:isCloser?'close':'prospect'};
-      }).sort((a,b)=>a.name.localeCompare(b.name));
+        const k=canon.toLowerCase();
+        if(!byCanon[k])byCanon[k]={name:canon,role:isCloser?'closer':'setter',facet:isCloser?'close':'prospect'};
+        else if(isCloser){byCanon[k].role='closer';byCanon[k].facet='close';}
+      });
+      return Object.values(byCanon).sort((a,b)=>a.name.localeCompare(b.name));
     }
     function renderSidebar(){
       const isMgr=me.role==='manager';
@@ -759,11 +774,11 @@
       // Por persona: esfuerzo (dialer) + embudo (reportes)
       const P={};
       const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,visitas:0,aplico:0,noAplico:0,aprob:0,neg:0,vend:0,monto:0,pv:0,ps:0,tv:0,ts:0}; return P[k];};
-      Object.entries(dialer).forEach(([k,d])=>{const o=eP(names[k]||k); o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;o.citas+=d.appointments||0;});
+      Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;o.citas+=d.appointments||0;});
       reports.forEach(r=>(r.visits||[]).forEach(v=>{
         const ch=efChannelOf(v); const cs=chStat[ch]; cs.visits++; if(v.applied===true)cs.applied++; if(v.result==='approved')cs.approved++; if(v.sale===true){cs.sold++;cs.profit+=v.net_profit||0;}
         const selfgen=(ch==='Self-gen');
-        [clean(v.closer),clean(v.closer2)].forEach(c=>{ if(!c)return; const o=eP(c);
+        [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; const o=eP(c);
           o.visitas++; if(v.applied===true)o.aplico++; else o.noAplico++;
           if(v.result==='approved')o.aprob++; if(v.result==='denied')o.neg++;
           if(v.sale===true){o.vend++;o.monto+=v.net_profit||0;}
