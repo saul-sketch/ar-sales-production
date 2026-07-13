@@ -979,11 +979,11 @@
       const cells=(recs,dim,citas)=>{
         const kV=prodCell(recs,null).k, kAp=prodCell(recs,v=>v.applied===true).k, kApr=prodCell(recs,v=>v.result==='approved').k, kVe=prodCell(recs,v=>v.sale===true).k;
         const a=prodAgg(recs);
-        const sub=p=>p?`<div style="font-size:12px;color:var(--gray-400);font-weight:400;line-height:1.2;">${p}</div>`:'';
-        const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:16px;font-weight:600;">${n||'—'}</span>${n?sub(pct):''}</td>`;
-        return `${cell(a.visitas,kV,citas>0?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:16px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}<td style="text-align:right;color:var(--green);font-weight:700;font-size:16px;">${a.monto?fmtMoney(a.monto):'—'}</td><td style="text-align:center;font-weight:700;font-size:16px;color:${a.visitas?'var(--gray-700)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
+        const sub=p=>p?`<div style="font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.25;">${p}</div>`:'';
+        const cell=(n,key,pct,extra)=>`<td style="text-align:center;${extra||''}" ${n?`class="clickable-row" onclick="event.stopPropagation();prodShow('${key}','${dim}')" title="ver"`:''}><span style="font-size:18px;font-weight:700;">${n||'—'}</span>${n?sub(pct):''}</td>`;
+        return `${cell(a.visitas,kV,citas>0?pctTxt(a.visitas,citas):'')}${cell(a.aplico,kAp,pctTxt(a.aplico,a.visitas))}<td style="text-align:center;font-size:18px;color:${a.neg?'var(--red)':'var(--gray-300)'};">${a.neg||'—'}</td>${cell(a.aprob,kApr,pctTxt(a.aprob,a.aplico))}${cell(a.vend,kVe,pctTxt(a.vend,a.aprob),'font-weight:700;')}<td style="text-align:right;color:var(--green);font-weight:700;font-size:18px;">${a.monto?fmtMoney(a.monto):'—'}</td><td style="text-align:center;font-weight:700;font-size:18px;color:${a.visitas?'var(--gray-900)':'var(--gray-300)'};border-left:1px solid var(--gray-200);">${a.visitas?pctTxt(a.vend,a.visitas):'—'}</td>`;
       };
-      const dcell=(v,cls)=>`<td style="text-align:right;font-size:16px;${cls||''}">${v||'—'}</td>`;
+      const dcell=(v,cls)=>`<td style="text-align:right;font-size:18px;${cls||''}">${v||'—'}</td>`;
       const rows=people.map(p=>{
         const open=window._prodOpen.has(p.key);
         const byO={}; ORIGINS.forEach(o=>byO[o]=p.recs.filter(v=>prodOrigin(v)===o));
