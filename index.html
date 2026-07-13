@@ -767,6 +767,8 @@
     window._prodOpen = window._prodOpen || new Set();
     window._prodRec = window._prodRec || {};
     function toggleProd(k){ if(window._prodOpen.has(k))window._prodOpen.delete(k); else window._prodOpen.add(k); render(); }
+    window._prodTeam = window._prodTeam || 'all';
+    function setProdTeam(t){ window._prodTeam=t; render(); }
     function prodOrigin(v){ if(v.scheduled_by==='Self-gen'||v.subgen===true)return 'Propio'; if(v.scheduled_by==='Call Center')return 'Call Center'; if(v.scheduled_by==='Walk-in')return 'Walk-in'; return 'Otro'; }
     function prodAgg(recs){ const a={visitas:recs.length,aplico:0,noap:0,aprob:0,neg:0,vend:0,monto:0};
       recs.forEach(v=>{ if(v.applied===true)a.aplico++; else a.noap++; if(v.result==='approved')a.aprob++; if(v.result==='denied')a.neg++; if(v.sale===true){a.vend++;a.monto+=v.net_profit||0;} }); return a; }
@@ -807,7 +809,8 @@
       s.reports.forEach(r=>(r.visits||[]).forEach(v=>{
         [canonName(clean(v.closer)),canonName(clean(v.closer2))].forEach(c=>{ if(!c)return; eP(c).recs.push({...v,_date:r.date,_loc:r.location}); });
       }));
-      const people=Object.values(P).filter(p=>p.recs.length>0||p.calls>0)
+      const teamF=window._prodTeam||'all';
+      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0)&&(teamF==='all'||p.team===teamF))
         .sort((a,b)=>prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length);
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
@@ -836,10 +839,14 @@
         return summary+detail;
       }).join('');
 
+      const teamPill=(t,l)=>`<button onclick="setProdTeam('${t}')" style="padding:7px 14px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${teamF===t?'var(--primary)':'var(--gray-200)'};background:${teamF===t?'var(--primary)':'white'};color:${teamF===t?'white':'var(--gray-600)'};">${l}</button>`;
       document.getElementById('main-content').innerHTML=`
-        <div class="page-title">Producción diaria</div>
-        <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · usa ‹ Día › arriba para moverte · toca una persona para abrir su desglose · toca un número para ver el detalle</div>
-        <div class="section-card" style="padding:0;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+          <div><div class="page-title">Producción diaria</div>
+          <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca una persona para su desglose · toca un número para el detalle</div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${teamPill('all','Todos')}${teamPill('cc','Call Center')}${teamPill('orlando','Closers Orlando')}${teamPill('kissimmee','Closers Kissimmee')}</div>
+        </div>
+        <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
             <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">📅cita</th>
             <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:right;">Monto</th>
