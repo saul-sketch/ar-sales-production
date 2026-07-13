@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <script>
+  /* Auto-refresco: fuerza traer la versión más nueva (evita caché de GitHub/CRM). Loop-safe por timestamp. */
+  (function(){try{
+    var u=new URL(location.href);
+    var t=parseInt(u.searchParams.get('_')||'0',36);
+    if(!t || (Date.now()-t)>30000){
+      u.searchParams.set('_', Date.now().toString(36));
+      location.replace(u.toString());
+    }
+  }catch(e){}})();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f172a">
