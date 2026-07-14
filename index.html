@@ -1782,7 +1782,7 @@
 
       reports.forEach(r=>{
         (r.visits||[]).forEach(v=>{
-          const setter=clean(v.setter),c1=clean(v.closer),c2=clean(v.closer2);
+          const setter=canonName(clean(v.setter)),c1=canonName(clean(v.closer)),c2=canonName(clean(v.closer2));
           const sb=v.scheduled_by, selfgen=sb==='Self-gen'||v.subgen===true;
           let mine=false, soldShare=0;
           if(facet==='close'){
@@ -1921,14 +1921,20 @@
         <p class="section-sub">Cómo cambia tu producción en el tiempo</p>
         <div id="dt-trend"></div></div>`;
 
-      // Historical grid — period by period with running accumulated total
-      const keysDesc=[...d.keys].reverse(); // most recent first
+      // Historical grid — muestra CADA día/semana/mes del período hasta hoy (rellena con ceros
+      // los días sin actividad), para ver el día a día completo, no solo los días con visitas.
+      const EMPTY={visits:0,applied:0,approved:0,sold:0,calls:0,appts:0};
+      const _pr=periodRange(), _today=todayISO(), _end=_pr.to<_today?_pr.to:_today;
+      const fullKeys=(()=>{ const ks=[],seen=new Set(); let dd=new Date(_pr.from+'T00:00:00'); const ed=new Date(_end+'T00:00:00'); let g=0;
+        while(dd<=ed && g++<400){ const iso=`${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`; const k=periodKey(iso); if(!seen.has(k)){seen.add(k);ks.push(k);} dd.setDate(dd.getDate()+1);} return ks; })();
+      const useKeys=(fullKeys.length&&fullKeys.length<=120)?fullKeys:d.keys;
+      const keysDesc=[...useKeys].reverse(); // most recent first
       // pre-compute accumulated sales from oldest → newest
       const acc={};let cV=0,cAp=0,cApr=0,cS=0;
-      d.keys.forEach(k=>{const p=d.byPeriod[k];cV+=p.visits;cAp+=p.applied;cApr+=p.approved;cS+=p.sold;
+      useKeys.forEach(k=>{const p=d.byPeriod[k]||EMPTY;cV+=p.visits;cAp+=p.applied;cApr+=p.approved;cS+=p.sold;
         acc[k]={v:cV,ap:cAp,apr:cApr,s:cS};});
       const histRows=keysDesc.map(k=>{
-        const p=d.byPeriod[k];const a=acc[k];
+        const p=d.byPeriod[k]||EMPTY;const a=acc[k];
         const v2a=pct(p.applied,p.visits),ap2s=pct(p.sold,p.approved),v2s=pct(p.sold,p.visits);
         return `<tr>
           <td style="font-weight:700;">${periodNice(k)}</td>
