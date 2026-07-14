@@ -519,11 +519,19 @@
         const {from,to}=periodRange();
         const toEx=new Date(to+'T00:00:00'); toEx.setDate(toEx.getDate()+1);
         const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
-        const r=await fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})});
+        const rid=window._rosterById||{};
+        const [r,rd]=await Promise.all([
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})})
+        ]);
         const rows=await r.json();
-        const byName={}, rid=window._rosterById||{};
+        const byName={};
         (Array.isArray(rows)?rows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const k=disp.toLowerCase(); if(!byName[k])byName[k]={n:0,name:disp}; byName[k].n+=(+x.n||0); });
         window._apptsByName=byName; window._apptsOk=true;
+        // Citas por día (para el histórico del perfil individual)
+        const drows=await rd.json(); const daily={};
+        (Array.isArray(drows)?drows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const k=canonName(nm).toLowerCase(); (daily[k]=daily[k]||{})[x.d]=(daily[k][x.d]||0)+(+x.n||0); });
+        window._apptsDailyByName=daily;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -1817,6 +1825,9 @@
         p.calls+=bas.calls||0;p.appts+=bas.total||0;
         tot.calls+=bas.calls||0;tot.appts+=bas.total||0;
       });
+      // Citas por día agendadas por esta persona (createdBy) desde ghl_appointments
+      const _daily=(window._apptsDailyByName||{})[ln2]||{};
+      Object.keys(_daily).forEach(day=>{ if(!inPeriod(day))return; const k=periodKey(day); const p=eP(k); p.appts+=_daily[day]; tot.appts+=_daily[day]; });
       const keys=Object.keys(byPeriod).sort();
       return {byPeriod,keys,origin,tot};
     }
