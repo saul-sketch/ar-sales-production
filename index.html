@@ -533,8 +533,10 @@
         const tm=window._agentTeam||{};
         (Array.isArray(drows)?drows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const ln=canonName(nm).toLowerCase(); const n=+x.n||0;
           (daily[ln]=daily[ln]||{})[x.d]=(daily[ln][x.d]||0)+n;
-          const t=tm[ln]; const grp=t==='cc'?'cc':(t==='orlando'||t==='kissimmee')?'closers':'otro';
-          const day=(byTeam[x.d]=byTeam[x.d]||{cc:0,closers:0,otro:0,total:0}); day[grp]+=n; day.total+=n; });
+          const t=tm[ln];
+          const day=(byTeam[x.d]=byTeam[x.d]||{cc:0,orlando:0,kissimmee:0,closers:0,otro:0,total:0});
+          if(t==='cc')day.cc+=n; else if(t==='orlando'){day.orlando+=n;day.closers+=n;} else if(t==='kissimmee'){day.kissimmee+=n;day.closers+=n;} else day.otro+=n;
+          day.total+=n; });
         window._apptsDailyByName=daily; window._apptsDailyByTeam=byTeam;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
@@ -1121,12 +1123,17 @@
 
       const teamPill=(t,l)=>`<button onclick="setProdTeam('${t}')" style="padding:7px 14px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${teamF===t?'var(--primary)':'var(--gray-200)'};background:${teamF===t?'var(--primary)':'white'};color:${teamF===t?'white':'var(--gray-600)'};">${l}</button>`;
       const _at=window._apptTeam||'all';
+      const _isCl=(_at==='closers'||_at==='orlando'||_at==='kissimmee');
       const _atTot=apptTrendSeries().data.reduce((a,b)=>a+b,0);
-      const atbtn=(t,l)=>`<button onclick="setApptTeam('${t}')" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${_at===t?'var(--primary)':'var(--gray-200)'};background:${_at===t?'var(--primary)':'white'};color:${_at===t?'white':'var(--gray-600)'};">${l}</button>`;
+      const atbtn=(t,l,active,sub)=>`<button onclick="setApptTeam('${t}')" style="padding:${sub?'4px 11px':'6px 13px'};border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${active?'var(--primary)':'var(--gray-200)'};background:${active?'var(--primary)':'white'};color:${active?'white':'var(--gray-600)'};">${l}</button>`;
+      const _subRow=_isCl?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;justify-content:flex-end;align-items:center;"><span style="font-size:11px;color:var(--gray-400);">Closers:</span>${atbtn('closers','Ambas',_at==='closers',1)}${atbtn('orlando','Orlando',_at==='orlando',1)}${atbtn('kissimmee','Kissimmee',_at==='kissimmee',1)}</div>`:'';
       const trendCard=`<div class="section-card" style="margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
           <div><div style="font-weight:800;font-size:15px;">📅 Citas agendadas — tendencia diaria</div><div style="font-size:12px;color:var(--gray-400);">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''}</div></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">${atbtn('all','Todos')}${atbtn('closers','Closers')}${atbtn('cc','Call Center')}</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${atbtn('all','Todos',_at==='all')}${atbtn('closers','Closers',_isCl)}${atbtn('cc','Call Center',_at==='cc')}</div>
+            ${_subRow}
+          </div>
         </div>
         <div style="font-size:30px;font-weight:800;margin:4px 0 0;">${_atTot}<span style="font-size:13px;font-weight:600;color:var(--gray-400);"> citas</span></div>
         <div id="appt-trend-chart"></div>
@@ -1646,7 +1653,8 @@
       const days=[]; let d=new Date(from+'T00:00:00'); const ed=new Date(end+'T00:00:00'); let g=0;
       while(d<=ed && g++<400){ days.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); d.setDate(d.getDate()+1); }
       const team=window._apptTeam||'all';
-      const data=days.map(iso=>{ const o=byTeam[iso]||{}; return team==='cc'?(o.cc||0):team==='closers'?(o.closers||0):(o.total||0); });
+      const pick=o=>team==='cc'?(o.cc||0):team==='closers'?(o.closers||0):team==='orlando'?(o.orlando||0):team==='kissimmee'?(o.kissimmee||0):(o.total||0);
+      const data=days.map(iso=>pick(byTeam[iso]||{}));
       return {days,data};
     }
     function mountApptChart(){
@@ -1658,7 +1666,7 @@
         xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
         yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
         stroke:{curve:'smooth',width:2.5},
-        colors:[team==='cc'?'#8b5cf6':team==='closers'?'#f97316':'#3b82f6'],
+        colors:[team==='cc'?'#8b5cf6':(team==='closers'||team==='orlando'||team==='kissimmee')?'#f97316':'#3b82f6'],
         fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.25,opacityTo:0,stops:[0,90]}},
         dataLabels:{enabled:false},
         markers:{size:3,hover:{size:5}},
