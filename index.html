@@ -520,9 +520,12 @@
         const toEx=new Date(to+'T00:00:00'); toEx.setDate(toEx.getDate()+1);
         const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
         const rid=window._rosterById||{};
-        const [r,rd]=await Promise.all([
-          fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})}),
-          fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`})})
+        const _body=JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`});
+        const [r,rd,rs,rl]=await Promise.all([
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_show_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_by_lead`,{method:'POST',headers:SUPA_HEADERS,body:_body})
         ]);
         const rows=await r.json();
         const byName={};
@@ -538,6 +541,20 @@
           if(t==='cc')day.cc+=n; else if(t==='orlando'){day.orlando+=n;day.closers+=n;} else if(t==='kissimmee'){day.kissimmee+=n;day.closers+=n;} else day.otro+=n;
           day.total+=n; });
         window._apptsDailyByName=daily; window._apptsDailyByTeam=byTeam;
+        // Show ratio (llegó/no llegó/canceló) — general, por locación (calendario) y por equipo (agendador)
+        const CAL_LOC={'c7dRlzYtyYlUUZOUvrpk':'orlando','r77AXpb3iS8DFZJViMSN':'kissimmee'};
+        const blank=()=>({showed:0,noshow:0,cancelled:0});
+        const ss={overall:blank(),loc:{orlando:blank(),kissimmee:blank()},team:{cc:blank(),orlando:blank(),kissimmee:blank()}};
+        const srows=await rs.json();
+        (Array.isArray(srows)?srows:[]).forEach(x=>{ const st=x.status, n=+x.n||0; if(!(st in ss.overall))return;
+          ss.overall[st]+=n;
+          const loc=CAL_LOC[x.calendar_id]; if(loc) ss.loc[loc][st]+=n;
+          const nm=rid[x.created_by_user_id]; const t=nm?tm[canonName(nm).toLowerCase()]:null; if(t&&ss.team[t]) ss.team[t][st]+=n; });
+        window._showStats=ss;
+        // No-show por anticipación (bucket 0..4)
+        const lrows=await rl.json(); const lead=[0,1,2,3,4].map(b=>({b,showed:0,noshow:0}));
+        (Array.isArray(lrows)?lrows:[]).forEach(x=>{ const o=lead[x.lead_bucket]; if(o) o[x.status==='showed'?'showed':'noshow']+=(+x.n||0); });
+        window._noshowByLead=lead;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -1686,18 +1703,65 @@
       const apptBy=window._apptsDailyByTeam||{};
       const visBy=visitBroughtByTeam(s);
       const at=window._apptTeam||'all', vt=window._visTeam||'all';
+      const ss=window._showStats||{overall:{},loc:{orlando:{},kissimmee:{}},team:{cc:{},orlando:{},kissimmee:{}}};
+      const dbox=(id,label,st)=>{ st=st||{}; const dec=(st.showed||0)+(st.noshow||0); const rate=showRate(st); const rc=rate>=60?'#10b981':rate>=45?'#e6a52c':'#ef4444'; return `<div style="flex:1;min-width:135px;text-align:center;"><div id="${id}"></div><div style="font-size:22px;font-weight:800;color:${dec?rc:'var(--gray-300)'};margin-top:-8px;">${dec?rate+'%':'—'}</div><div style="font-size:12px;font-weight:700;color:var(--gray-700);">${label}</div><div style="font-size:11px;color:var(--gray-400);">${dec} cita${dec===1?'':'s'}${st.cancelled?' · '+st.cancelled+' canc.':''}</div></div>`; };
+      const showCard=`<div class="section-card" style="margin-bottom:14px;">
+        <div style="font-weight:800;font-size:15px;">🎯 Show ratio — llegaron vs no llegaron</div>
+        <div style="font-size:12px;color:var(--gray-400);">${periodLabel()} · % que se presentó a la cita (verde llegó · rojo no llegó · gris canceló)</div>
+        <div style="display:flex;justify-content:center;margin-top:10px;">${dbox('sr-gen','Auto Republic — general',ss.overall)}</div>
+        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por locación</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-orl','Orlando',ss.loc.orlando)}${dbox('sr-kis','Kissimmee',ss.loc.kissimmee)}</div></div>
+        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por equipo</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-cc','Call Center',ss.team.cc)}${dbox('sr-tor','Closers Orlando',ss.team.orlando)}${dbox('sr-tki','Closers Kissimmee',ss.team.kissimmee)}</div></div>
+      </div>`;
+      const noshowCard=`<div class="section-card" style="margin-bottom:14px;">
+        <div style="font-weight:800;font-size:15px;">🔴 Riesgo de no-show por anticipación</div>
+        <div style="font-size:12px;color:var(--gray-400);">Cuántos días antes se agendó la cita → % que NO llegó. Entre más lejos se agenda, más se cae.</div>
+        <div id="noshow-lead"></div>
+      </div>`;
       document.getElementById('main-content').innerHTML=
         `<div class="page-title">Tendencias</div>
-         <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · agendamiento y visitas por día</div>
+         <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · agendamiento, visitas y show ratio</div>
          <div style="margin-top:14px;">`+
         trendCard({chartId:'trend-appts', byDay:apptBy, team:at, setFn:'setApptTeam', title:'📅 Citas agendadas — por día', sub:'Quién agendó la cita', ccLabel:'Call Center', unit:'citas'})+
         trendCard({chartId:'trend-visits', byDay:visBy, team:vt, setFn:'setVisTeam', title:'🚶 Visitas traídas — por día', sub:'Quién trajo la visita (setter o self-gen) · no quién la atendió', ccLabel:'Setters', unit:'visitas'})+
+        showCard+noshowCard+
         `</div>`;
       mountTrend('trend-appts', apptBy, at, 'citas');
       mountTrend('trend-visits', visBy, vt, 'visitas');
+      mountDonut('sr-gen',ss.overall); mountDonut('sr-orl',ss.loc.orlando); mountDonut('sr-kis',ss.loc.kissimmee);
+      mountDonut('sr-cc',ss.team.cc); mountDonut('sr-tor',ss.team.orlando); mountDonut('sr-tki',ss.team.kissimmee);
+      mountNoshowChart();
     }
     function setApptTeam(t){ window._apptTeam=t; render(); }
     function setVisTeam(t){ window._visTeam=t; render(); }
+    function showRate(st){ st=st||{}; const d=(st.showed||0)+(st.noshow||0); return d?Math.round((st.showed||0)/d*100):0; }
+    function mountDonut(id,st){
+      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0, rate=showRate(st);
+      if((showed+noshow+canc)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:150px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
+      mountChart(id,{
+        chart:{type:'donut',height:150,fontFamily:'inherit'},
+        series:[showed,noshow,canc], labels:['Llegó','No llegó','Canceló'],
+        colors:['#10b981','#ef4444','#cbd5e1'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
+        plotOptions:{pie:{donut:{size:'66%',labels:{show:false}}}},
+        tooltip:{y:{formatter:v=>v+' citas'}}
+      });
+    }
+    function mountNoshowChart(){
+      const nl=window._noshowByLead||[];
+      const cats=['Mismo día','Sig. día','2-3 días','4-7 días','8+ días'];
+      const data=nl.map(o=>{const t=o.showed+o.noshow;return t?Math.round(o.noshow/t*100):0;});
+      const counts=nl.map(o=>o.showed+o.noshow);
+      mountChart('noshow-lead',{
+        chart:{type:'bar',height:240,toolbar:{show:false},fontFamily:'inherit'},
+        series:[{name:'No-show',data}],
+        xaxis:{categories:cats,labels:{style:{colors:'#94a3b8'}}},
+        colors:['#ef4444'],
+        plotOptions:{bar:{borderRadius:6,columnWidth:'55%'}},
+        dataLabels:{enabled:true,formatter:v=>v+'%',offsetY:-20,style:{colors:['#334155'],fontWeight:'700'}},
+        yaxis:{max:100,labels:{formatter:v=>v+'%',style:{colors:'#94a3b8'}}},
+        grid:{borderColor:'#eef1f4',strokeDashArray:3},
+        tooltip:{y:{formatter:(v,{dataPointIndex})=>v+'% no-show · '+(counts[dataPointIndex]||0)+' citas'}}
+      });
+    }
 
     function funnelCard(title,o,kind,sub,agentName){
       const isClose=kind==='close';
