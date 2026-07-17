@@ -521,11 +521,12 @@
         const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
         const rid=window._rosterById||{};
         const _body=JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`});
-        const [r,rd,rs,rl]=await Promise.all([
+        const [r,rd,rs,rl,rlc]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_show_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
-          fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_by_lead`,{method:'POST',headers:SUPA_HEADERS,body:_body})
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_by_lead`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_lead_by_creator`,{method:'POST',headers:SUPA_HEADERS,body:_body})
         ]);
         const rows=await r.json();
         const byName={};
@@ -545,12 +546,21 @@
         const CAL_LOC={'c7dRlzYtyYlUUZOUvrpk':'orlando','r77AXpb3iS8DFZJViMSN':'kissimmee'};
         const blank=()=>({showed:0,noshow:0,cancelled:0});
         const ss={overall:blank(),loc:{orlando:blank(),kissimmee:blank()},team:{cc:blank(),orlando:blank(),kissimmee:blank()}};
+        const byPerson={}; // lnName -> {name, team, tot, loc:{orlando,kissimmee}}
         const srows=await rs.json();
         (Array.isArray(srows)?srows:[]).forEach(x=>{ const st=x.status, n=+x.n||0; if(!(st in ss.overall))return;
           ss.overall[st]+=n;
           const loc=CAL_LOC[x.calendar_id]; if(loc) ss.loc[loc][st]+=n;
-          const nm=rid[x.created_by_user_id]; const t=nm?tm[canonName(nm).toLowerCase()]:null; if(t&&ss.team[t]) ss.team[t][st]+=n; });
-        window._showStats=ss;
+          const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const ln=disp.toLowerCase(); const t=tm[ln]||null;
+          if(t&&ss.team[t]) ss.team[t][st]+=n;
+          const p=(byPerson[ln]=byPerson[ln]||{name:disp,team:t,tot:blank(),loc:{orlando:blank(),kissimmee:blank()}});
+          p.tot[st]+=n; if(loc) p.loc[loc][st]+=n; });
+        window._showStats=ss; window._showByPerson=byPerson;
+        // No-show por anticipación POR PERSONA (para drill-down de las barras)
+        const lcrows=await rlc.json(); const leadPerson={0:{},1:{},2:{},3:{},4:{}};
+        (Array.isArray(lcrows)?lcrows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const ln=disp.toLowerCase(); const b=x.lead_bucket;
+          const p=(leadPerson[b][ln]=leadPerson[b][ln]||{name:disp,showed:0,noshow:0}); p[x.status==='showed'?'showed':'noshow']+=(+x.n||0); });
+        window._leadByPerson=leadPerson;
         // No-show por anticipación (bucket 0..4)
         const lrows=await rl.json(); const lead=[0,1,2,3,4].map(b=>({b,showed:0,noshow:0}));
         (Array.isArray(lrows)?lrows:[]).forEach(x=>{ const o=lead[x.lead_bucket]; if(o) o[x.status==='showed'?'showed':'noshow']+=(+x.n||0); });
@@ -1655,10 +1665,10 @@
     function trendPick(o,team){ o=o||{}; return team==='cc'?(o.cc||0):team==='closers'?(o.closers||0):team==='orlando'?(o.orlando||0):team==='kissimmee'?(o.kissimmee||0):(o.total||0); }
     function trendData(byDay,team){ const days=trendDays(); return {days,data:days.map(iso=>trendPick(byDay[iso],team))}; }
     function trendColor(team){ return team==='cc'?'#8b5cf6':(team==='closers'||team==='orlando'||team==='kissimmee')?'#f97316':'#3b82f6'; }
-    function mountTrend(id,byDay,team,unit){
+    function mountTrend(id,byDay,team,unit,kind){
       const {days,data}=trendData(byDay,team);
       mountChart(id,{
-        chart:{type:'area',height:210,toolbar:{show:false},fontFamily:'inherit'},
+        chart:{type:'area',height:210,toolbar:{show:false},fontFamily:'inherit',events:kind?{markerClick:(e,ctx,{dataPointIndex})=>drillDay(kind,days[dataPointIndex]),dataPointSelection:(e,ctx,cfg)=>drillDay(kind,days[cfg.dataPointIndex])}:{}},
         series:[{name:unit||'',data}],
         xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
         yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
@@ -1687,16 +1697,18 @@
     }
     // Visitas TRAÍDAS por día, agrupadas por quién las trajo (setter=cc, o self-gen=closer por locación). No por quién atendió.
     function visitBroughtByTeam(s){
-      const tm=window._agentTeam||{}; const byDay={};
+      const tm=window._agentTeam||{}; const byDay={}; const byPersonDay={};
       (s.reports||[]).forEach(r=>(r.visits||[]).forEach(v=>{
         const setter=canonName(clean(v.setter)); const selfgen=v.scheduled_by==='Self-gen'||v.subgen===true;
-        let team='otro';
-        if(setter) team='cc';
-        else if(selfgen){ const c=canonName(clean(v.closer)); const t=c?tm[c.toLowerCase()]:null; team=(t==='orlando'||t==='kissimmee')?t:'otro'; }
+        let team='otro', prospector=null;
+        if(setter){ team='cc'; prospector=setter; }
+        else if(selfgen){ const c=canonName(clean(v.closer)); const t=c?tm[c.toLowerCase()]:null; team=(t==='orlando'||t==='kissimmee')?t:'otro'; prospector=c; }
         const day=(byDay[r.date]=byDay[r.date]||{cc:0,orlando:0,kissimmee:0,closers:0,otro:0,total:0});
         if(team==='cc')day.cc++; else if(team==='orlando'){day.orlando++;day.closers++;} else if(team==='kissimmee'){day.kissimmee++;day.closers++;} else day.otro++;
         day.total++;
+        if(prospector){ const ln=prospector.toLowerCase(); (byPersonDay[ln]=byPersonDay[ln]||{name:prospector,days:{}}); byPersonDay[ln].days[r.date]=(byPersonDay[ln].days[r.date]||0)+1; }
       }));
+      window._visByPersonDay=byPersonDay;
       return byDay;
     }
     function renderTendencias(s){
@@ -1704,13 +1716,13 @@
       const visBy=visitBroughtByTeam(s);
       const at=window._apptTeam||'all', vt=window._visTeam||'all';
       const ss=window._showStats||{overall:{},loc:{orlando:{},kissimmee:{}},team:{cc:{},orlando:{},kissimmee:{}}};
-      const dbox=(id,label,st)=>{ st=st||{}; const dec=(st.showed||0)+(st.noshow||0); const rate=showRate(st); const rc=rate>=60?'#10b981':rate>=45?'#e6a52c':'#ef4444'; return `<div style="flex:1;min-width:135px;text-align:center;"><div id="${id}"></div><div style="font-size:22px;font-weight:800;color:${dec?rc:'var(--gray-300)'};margin-top:-8px;">${dec?rate+'%':'—'}</div><div style="font-size:12px;font-weight:700;color:var(--gray-700);">${label}</div><div style="font-size:11px;color:var(--gray-400);">${dec} cita${dec===1?'':'s'}${st.cancelled?' · '+st.cancelled+' canc.':''}</div></div>`; };
+      const dbox=(id,label,st,mode,key)=>{ st=st||{}; const dec=(st.showed||0)+(st.noshow||0); const rate=showRate(st); const rc=rate>=60?'#10b981':rate>=45?'#e6a52c':'#ef4444'; return `<div class="clickable-row" onclick="drillShow('${mode}','${key}','${label.replace(/'/g,"")}')" style="flex:1;min-width:135px;text-align:center;cursor:pointer;border-radius:12px;padding:4px 2px;"><div id="${id}"></div><div style="font-size:22px;font-weight:800;color:${dec?rc:'var(--gray-300)'};margin-top:-8px;">${dec?rate+'%':'—'}</div><div style="font-size:12px;font-weight:700;color:var(--gray-700);">${label} ›</div><div style="font-size:11px;color:var(--gray-400);">${dec} cita${dec===1?'':'s'}${st.cancelled?' · '+st.cancelled+' canc.':''}</div></div>`; };
       const showCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🎯 Show ratio — llegaron vs no llegaron</div>
         <div style="font-size:12px;color:var(--gray-400);">${periodLabel()} · % que se presentó a la cita (verde llegó · rojo no llegó · gris canceló)</div>
-        <div style="display:flex;justify-content:center;margin-top:10px;">${dbox('sr-gen','Auto Republic — general',ss.overall)}</div>
-        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por locación</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-orl','Orlando',ss.loc.orlando)}${dbox('sr-kis','Kissimmee',ss.loc.kissimmee)}</div></div>
-        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por equipo</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-cc','Call Center',ss.team.cc)}${dbox('sr-tor','Closers Orlando',ss.team.orlando)}${dbox('sr-tki','Closers Kissimmee',ss.team.kissimmee)}</div></div>
+        <div style="display:flex;justify-content:center;margin-top:10px;">${dbox('sr-gen','Auto Republic — general',ss.overall,'overall','')}</div>
+        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por locación</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-orl','Orlando',ss.loc.orlando,'loc','orlando')}${dbox('sr-kis','Kissimmee',ss.loc.kissimmee,'loc','kissimmee')}</div></div>
+        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por equipo</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-cc','Call Center',ss.team.cc,'team','cc')}${dbox('sr-tor','Closers Orlando',ss.team.orlando,'team','orlando')}${dbox('sr-tki','Closers Kissimmee',ss.team.kissimmee,'team','kissimmee')}</div></div>
       </div>`;
       const noshowCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🔴 Riesgo de no-show por anticipación</div>
@@ -1725,8 +1737,8 @@
         trendCard({chartId:'trend-visits', byDay:visBy, team:vt, setFn:'setVisTeam', title:'🚶 Visitas traídas — por día', sub:'Quién trajo la visita (setter o self-gen) · no quién la atendió', ccLabel:'Setters', unit:'visitas'})+
         showCard+noshowCard+
         `</div>`;
-      mountTrend('trend-appts', apptBy, at, 'citas');
-      mountTrend('trend-visits', visBy, vt, 'visitas');
+      mountTrend('trend-appts', apptBy, at, 'citas', 'appts');
+      mountTrend('trend-visits', visBy, vt, 'visitas', 'visits');
       mountDonut('sr-gen',ss.overall); mountDonut('sr-orl',ss.loc.orlando); mountDonut('sr-kis',ss.loc.kissimmee);
       mountDonut('sr-cc',ss.team.cc); mountDonut('sr-tor',ss.team.orlando); mountDonut('sr-tki',ss.team.kissimmee);
       mountNoshowChart();
@@ -1751,16 +1763,62 @@
       const data=nl.map(o=>{const t=o.showed+o.noshow;return t?Math.round(o.noshow/t*100):0;});
       const counts=nl.map(o=>o.showed+o.noshow);
       mountChart('noshow-lead',{
-        chart:{type:'bar',height:240,toolbar:{show:false},fontFamily:'inherit'},
+        chart:{type:'bar',height:240,toolbar:{show:false},fontFamily:'inherit',events:{dataPointSelection:(e,ctx,cfg)=>drillLead(cfg.dataPointIndex)}},
         series:[{name:'No-show',data}],
         xaxis:{categories:cats,labels:{style:{colors:'#94a3b8'}}},
         colors:['#ef4444'],
-        plotOptions:{bar:{borderRadius:6,columnWidth:'55%'}},
+        plotOptions:{bar:{borderRadius:6,columnWidth:'55%',cursor:'pointer'}},
         dataLabels:{enabled:true,formatter:v=>v+'%',offsetY:-20,style:{colors:['#334155'],fontWeight:'700'}},
         yaxis:{max:100,labels:{formatter:v=>v+'%',style:{colors:'#94a3b8'}}},
         grid:{borderColor:'#eef1f4',strokeDashArray:3},
+        states:{active:{filter:{type:'none'}}},
         tooltip:{y:{formatter:(v,{dataPointIndex})=>v+'% no-show · '+(counts[dataPointIndex]||0)+' citas'}}
       });
+    }
+
+    // ===== Drill-down: clic en gráfica → nombres de personas =====
+    function drillModal(title, subtitle, items){
+      const body = items.length ? items.map((it,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--gray-100);">
+        <div><span style="color:var(--gray-400);font-size:12px;">${i+1}.</span> <span style="font-weight:600;">${escapeHtml(it.name)}</span>${it.sub?`<div style="font-size:11px;color:var(--gray-500);margin-left:16px;">${it.sub}</div>`:''}</div>
+        <div style="text-align:right;font-weight:800;color:${it.color||'var(--gray-900)'};white-space:nowrap;">${it.main}</div></div>`).join('') : '<div class="empty">Sin datos</div>';
+      const o=document.getElementById('drill-modal'); if(o)o.remove();
+      document.body.insertAdjacentHTML('beforeend',`<div id="drill-modal" style="position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">
+        <div style="background:white;border-radius:16px;padding:18px;max-width:480px;width:100%;margin:auto;box-shadow:0 24px 60px rgba(0,0,0,.28);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div><div style="font-weight:800;font-size:15px;">${title}</div>${subtitle?`<div style="font-size:12px;color:var(--gray-400);">${subtitle}</div>`:''}</div>
+          <button onclick="this.closest('#drill-modal').remove()" style="background:var(--gray-100);border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;flex:0 0 auto;">✕</button></div>
+          <div style="margin-top:10px;">${body}</div>
+        </div></div>`);
+    }
+    function drillShow(mode, key, title){
+      const bp=window._showByPerson||{}; const rows=[];
+      Object.values(bp).forEach(p=>{
+        let st = mode==='loc' ? p.loc[key] : p.tot;
+        if(mode==='team' && p.team!==key) return;
+        if(!st) return; const dec=(st.showed||0)+(st.noshow||0); if(!dec) return;
+        rows.push({name:p.name, rate:Math.round((st.showed||0)/dec*100), dec, showed:st.showed||0, noshow:st.noshow||0});
+      });
+      rows.sort((a,b)=>b.dec-a.dec);
+      drillModal('Show rate · '+title, 'Show rate individual de cada persona · '+periodLabel(),
+        rows.map(r=>({name:r.name, main:r.rate+'%', color:r.rate>=60?'#10b981':r.rate>=45?'#e6a52c':'#ef4444', sub:`${r.showed} llegó · ${r.noshow} no llegó · ${r.dec} citas`})));
+    }
+    function drillLead(bucket){
+      const lp=(window._leadByPerson||{})[bucket]||{};
+      const rows=Object.values(lp).map(p=>{ const dec=p.showed+p.noshow; return {name:p.name, noshow:p.noshow, dec, rate:dec?Math.round(p.noshow/dec*100):0}; }).filter(r=>r.dec>0);
+      rows.sort((a,b)=>b.noshow-a.noshow||b.dec-a.dec);
+      const names=['mismo día','siguiente día','2-3 días','4-7 días','8+ días'];
+      drillModal('Citas agendadas con '+names[bucket]+' de anticipación', 'Quién las agendó · ordenado por no-show · '+periodLabel(),
+        rows.map(r=>({name:r.name, main:r.noshow+' no-show', color:'#ef4444', sub:`${r.dec} citas · ${r.rate}% no-show`})));
+    }
+    function drillDay(kind, day){
+      const rows=[];
+      if(kind==='appts'){ const src=window._apptsDailyByName||{}, nm=window._apptsByName||{};
+        Object.entries(src).forEach(([ln,byDay])=>{ const n=byDay[day]||0; if(n>0) rows.push({name:(nm[ln]&&nm[ln].name)||ln, n}); }); }
+      else { const src=window._visByPersonDay||{};
+        Object.values(src).forEach(p=>{ const n=(p.days||{})[day]||0; if(n>0) rows.push({name:p.name, n}); }); }
+      rows.sort((a,b)=>b.n-a.n);
+      const dp=day.split('-');
+      drillModal((kind==='appts'?'📅 Citas agendadas':'🚶 Visitas traídas')+' · '+(+dp[2])+' '+MONTHS[(+dp[1])-1], 'Por persona ese día',
+        rows.map(r=>({name:r.name, main:r.n+'', color:'var(--gray-900)'})));
     }
 
     function funnelCard(title,o,kind,sub,agentName){
