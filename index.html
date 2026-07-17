@@ -528,10 +528,14 @@
         const byName={};
         (Array.isArray(rows)?rows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const k=disp.toLowerCase(); if(!byName[k])byName[k]={n:0,name:disp}; byName[k].n+=(+x.n||0); });
         window._apptsByName=byName; window._apptsOk=true;
-        // Citas por día (para el histórico del perfil individual)
-        const drows=await rd.json(); const daily={};
-        (Array.isArray(drows)?drows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const k=canonName(nm).toLowerCase(); (daily[k]=daily[k]||{})[x.d]=(daily[k][x.d]||0)+(+x.n||0); });
-        window._apptsDailyByName=daily;
+        // Citas por día (para el histórico del perfil individual) + por equipo (para la gráfica de tendencia)
+        const drows=await rd.json(); const daily={}; const byTeam={};
+        const tm=window._agentTeam||{};
+        (Array.isArray(drows)?drows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const ln=canonName(nm).toLowerCase(); const n=+x.n||0;
+          (daily[ln]=daily[ln]||{})[x.d]=(daily[ln][x.d]||0)+n;
+          const t=tm[ln]; const grp=t==='cc'?'cc':(t==='orlando'||t==='kissimmee')?'closers':'otro';
+          const day=(byTeam[x.d]=byTeam[x.d]||{cc:0,closers:0,otro:0,total:0}); day[grp]+=n; day.total+=n; });
+        window._apptsDailyByName=daily; window._apptsDailyByTeam=byTeam;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -1116,7 +1120,19 @@
         </td></tr>`;
 
       const teamPill=(t,l)=>`<button onclick="setProdTeam('${t}')" style="padding:7px 14px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${teamF===t?'var(--primary)':'var(--gray-200)'};background:${teamF===t?'var(--primary)':'white'};color:${teamF===t?'white':'var(--gray-600)'};">${l}</button>`;
+      const _at=window._apptTeam||'all';
+      const _atTot=apptTrendSeries().data.reduce((a,b)=>a+b,0);
+      const atbtn=(t,l)=>`<button onclick="setApptTeam('${t}')" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${_at===t?'var(--primary)':'var(--gray-200)'};background:${_at===t?'var(--primary)':'white'};color:${_at===t?'white':'var(--gray-600)'};">${l}</button>`;
+      const trendCard=`<div class="section-card" style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+          <div><div style="font-weight:800;font-size:15px;">📅 Citas agendadas — tendencia diaria</div><div style="font-size:12px;color:var(--gray-400);">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''}</div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${atbtn('all','Todos')}${atbtn('closers','Closers')}${atbtn('cc','Call Center')}</div>
+        </div>
+        <div style="font-size:30px;font-weight:800;margin:4px 0 0;">${_atTot}<span style="font-size:13px;font-weight:600;color:var(--gray-400);"> citas</span></div>
+        <div id="appt-trend-chart"></div>
+      </div>`;
       document.getElementById('main-content').innerHTML=`
+        ${trendCard}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
           <div><div class="page-title">Producción diaria</div>
           <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · toca una persona para su desglose · toca un número para el detalle</div></div>
@@ -1128,6 +1144,7 @@
             <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;">Cancel.</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
           </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
+      mountApptChart();
     }
 
     // ===== RESUMEN — landing del manager: pulso del embudo + a quién coachear + equipos =====
@@ -1620,6 +1637,36 @@
       _chartQueue.forEach(({id,opts})=>{const el=document.getElementById(id);if(el&&typeof ApexCharts!=='undefined'){el.innerHTML='';new ApexCharts(el,opts).render();}});
       _chartQueue=[];
     }
+
+    // ===== Tendencia de citas agendadas por día (Todos / Closers / Call Center) =====
+    function apptTrendSeries(){
+      const byTeam=window._apptsDailyByTeam||{};
+      const {from,to}=periodRange();
+      const today=todayISO(), end=to<today?to:today;
+      const days=[]; let d=new Date(from+'T00:00:00'); const ed=new Date(end+'T00:00:00'); let g=0;
+      while(d<=ed && g++<400){ days.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); d.setDate(d.getDate()+1); }
+      const team=window._apptTeam||'all';
+      const data=days.map(iso=>{ const o=byTeam[iso]||{}; return team==='cc'?(o.cc||0):team==='closers'?(o.closers||0):(o.total||0); });
+      return {days,data};
+    }
+    function mountApptChart(){
+      const {days,data}=apptTrendSeries();
+      const team=window._apptTeam||'all';
+      mountChart('appt-trend-chart',{
+        chart:{type:'area',height:210,toolbar:{show:false},fontFamily:'inherit'},
+        series:[{name:'Citas',data}],
+        xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
+        yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
+        stroke:{curve:'smooth',width:2.5},
+        colors:[team==='cc'?'#8b5cf6':team==='closers'?'#f97316':'#3b82f6'],
+        fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.25,opacityTo:0,stops:[0,90]}},
+        dataLabels:{enabled:false},
+        markers:{size:3,hover:{size:5}},
+        grid:{borderColor:'#eef1f4',strokeDashArray:3},
+        tooltip:{y:{formatter:v=>v+' cita'+(v===1?'':'s')}}
+      });
+    }
+    function setApptTeam(t){ window._apptTeam=t; render(); }
 
     function funnelCard(title,o,kind,sub,agentName){
       const isClose=kind==='close';
