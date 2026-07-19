@@ -38,6 +38,24 @@ serve(async (req) => {
     });
     if (!ghlRes.ok) {
       const t = await ghlRes.text();
+      // Si la cita ya no existe en GHL (borrada/duplicada), no tiene caso reintentar —
+      // limpiamos la copia local para que desaparezca sola de la lista.
+      let isDeleted = false;
+      try {
+        const chk = await fetch(`https://services.leadconnectorhq.com/calendars/events/appointments/${appointmentId}`, {
+          headers: { Authorization: `Bearer ${GHL_TOKEN}`, Version: "2021-04-15", Accept: "application/json" },
+        });
+        if (chk.ok) { const j = await chk.json(); isDeleted = !!(j.appointment && j.appointment.deleted); }
+      } catch { /* no crítico */ }
+
+      if (isDeleted && SUPABASE_URL && SERVICE_KEY) {
+        await fetch(`${SUPABASE_URL}/rest/v1/ghl_appointments?id=eq.${appointmentId}`, {
+          method: "PATCH",
+          headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ deleted: true }),
+        });
+        return new Response(JSON.stringify({ error: "appointment_deleted" }), { status: 410, headers: { ...cors, "Content-Type": "application/json" } });
+      }
       return new Response(JSON.stringify({ error: "ghl_update_failed", detail: t }), { status: 502, headers: { ...cors, "Content-Type": "application/json" } });
     }
 

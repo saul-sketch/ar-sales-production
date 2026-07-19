@@ -1745,6 +1745,12 @@
       if(btn){ btn.disabled=true; const sib=btn.parentElement.querySelectorAll('button'); sib.forEach(b=>b.disabled=true); btn.textContent='...'; }
       try{
         const r=await fetch(`${SUPA_URL}/functions/v1/mark-appointment`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({appointmentId:id,status})});
+        if(r.status===410){ // cita ya no existe en el CRM (borrada/duplicada) — se quita sola de la lista
+          window._staleAppts=(window._staleAppts||[]).filter(x=>x.id!==id);
+          render();
+          alert('Esa cita ya no existe en el CRM (fue eliminada) — se quitó de la lista.');
+          return;
+        }
         if(!r.ok){ alert('No se pudo marcar, intenta de nuevo.'); if(btn){btn.disabled=false;btn.textContent=status==='showed'?'Llegó':'No llegó';} return; }
         window._staleAppts=(window._staleAppts||[]).filter(x=>x.id!==id);
         await loadAppts();

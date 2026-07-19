@@ -81,13 +81,16 @@ async function sql(query) {
   const knownPhones = new Set(visitRows.map(r => normPhone(r.phone)).filter(Boolean));
   console.log(`  ${knownPhones.size} teléfonos únicos en reportes de visita`);
 
-  let resolved = 0, skipped = 0, errors = 0;
+  let resolved = 0, skipped = 0, errors = 0, cleaned = 0;
   for (const c of candidates) {
     await new Promise(r => setTimeout(r, 150)); // no saturar la API de GHL
     try {
       const ar = await fetch(`${GHL}/calendars/events/appointments/${c.id}`, { headers: H });
       if (!ar.ok) { errors++; continue; }
       const appt = (await ar.json()).appointment || {};
+
+      // Cita borrada/duplicada en GHL — limpiar local para que salga de "Citas sin marcar"
+      if (appt.deleted) { await patchAppt(c.id, { deleted: true }); cleaned++; continue; }
 
       const contactId = appt.contactId;
 
@@ -135,5 +138,5 @@ async function sql(query) {
       console.warn(`  ! error en ${c.id}: ${e.message}`);
     }
   }
-  console.log(`[${new Date().toISOString()}] Listo. Resueltas: ${resolved} · sin rastro (sin tocar): ${skipped} · errores: ${errors}`);
+  console.log(`[${new Date().toISOString()}] Listo. Resueltas: ${resolved} · sin rastro (sin tocar): ${skipped} · borradas en CRM (limpiadas): ${cleaned} · errores: ${errors}`);
 })().catch(e => { console.error('RESOLVE ERROR:', e.message); process.exit(1); });
