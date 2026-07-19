@@ -521,10 +521,9 @@
         const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
         const rid=window._rosterById||{};
         const _body=JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`});
-        const [r,rd,rs,rl,rlc]=await Promise.all([
+        const [r,rd,rl,rlc]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
-          fetch(`${SUPA_URL}/rest/v1/rpc/appt_show_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_by_lead`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_lead_by_creator`,{method:'POST',headers:SUPA_HEADERS,body:_body})
         ]);
@@ -542,20 +541,7 @@
           if(t==='cc')day.cc+=n; else if(t==='orlando'){day.orlando+=n;day.closers+=n;} else if(t==='kissimmee'){day.kissimmee+=n;day.closers+=n;} else day.otro+=n;
           day.total+=n; });
         window._apptsDailyByName=daily; window._apptsDailyByTeam=byTeam;
-        // Show ratio (llegó/no llegó/canceló) — general, por locación (calendario) y por equipo (agendador)
         const CAL_LOC={'c7dRlzYtyYlUUZOUvrpk':'orlando','r77AXpb3iS8DFZJViMSN':'kissimmee'};
-        const blank=()=>({showed:0,noshow:0,cancelled:0});
-        const ss={overall:blank(),loc:{orlando:blank(),kissimmee:blank()},team:{cc:blank(),orlando:blank(),kissimmee:blank()}};
-        const byPerson={}; // lnName -> {name, team, tot, loc:{orlando,kissimmee}}
-        const srows=await rs.json();
-        (Array.isArray(srows)?srows:[]).forEach(x=>{ const st=x.status, n=+x.n||0; if(!(st in ss.overall))return;
-          ss.overall[st]+=n;
-          const loc=CAL_LOC[x.calendar_id]; if(loc) ss.loc[loc][st]+=n;
-          const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const ln=disp.toLowerCase(); const t=tm[ln]||null;
-          if(t&&ss.team[t]) ss.team[t][st]+=n;
-          const p=(byPerson[ln]=byPerson[ln]||{name:disp,team:t,tot:blank(),loc:{orlando:blank(),kissimmee:blank()}});
-          p.tot[st]+=n; if(loc) p.loc[loc][st]+=n; });
-        window._showStats=ss; window._showByPerson=byPerson;
         // No-show por anticipación POR PERSONA (para drill-down de las barras)
         const lcrows=await rlc.json(); const leadPerson={0:{},1:{},2:{},3:{},4:{}};
         (Array.isArray(lcrows)?lcrows:[]).forEach(x=>{ const nm=rid[x.created_by_user_id]; if(!nm)return; const disp=canonName(nm); const ln=disp.toLowerCase(); const b=x.lead_bucket;
@@ -576,25 +562,34 @@
         const ptoS=`${pEx.getFullYear()}-${String(pEx.getMonth()+1).padStart(2,'0')}-${String(pEx.getDate()).padStart(2,'0')}`;
         window._anPrevLabel=pf.slice(0,7);
         const _pbody=JSON.stringify({from_ts:`${pf}T05:00:00Z`,to_ts:`${ptoS}T05:00:00Z`});
-        const [rdc,rlcc,rdcP,rsP]=await Promise.all([
+        const [rdc,rlcc,rdcP,roc,rocP]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_lead_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_pbody}),
-          fetch(`${SUPA_URL}/rest/v1/rpc/appt_show_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_pbody})
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_outcome_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_outcome_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_pbody})
         ]);
         const arrOf=async(res)=>{ const j=await res.json(); return Array.isArray(j)?j:[]; };
-        const dcRaw=await arrOf(rdc), dcPRaw=await arrOf(rdcP), lccRaw=await arrOf(rlcc), sPRaw=await arrOf(rsP);
+        const dcRaw=await arrOf(rdc), dcPRaw=await arrOf(rdcP), lccRaw=await arrOf(rlcc);
         const mkCitas=arr=>arr.map(x=>({day:x.d,team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',n:+x.n||0}));
         window._citasRows=mkCitas(dcRaw); window._citasRowsPrev=mkCitas(dcPRaw);
         // citas por persona/día (loc-split) para el drill de la tendencia
         const cpd={};
         dcRaw.forEach(x=>{ const disp=dispOf(x.created_by_user_id), ln=disp.toLowerCase(), loc=CAL_LOC[x.calendar_id]||'otro'; const d=(cpd[x.d]=cpd[x.d]||{}); const p=(d[ln]=d[ln]||{name:disp,team:teamOf(x.created_by_user_id),orlando:0,kissimmee:0,otro:0}); p[loc]=(p[loc]||0)+(+x.n||0); });
         window._citasPersonDay=cpd;
-        // show ratio en filas (team,loc,status) + mes anterior
-        const mkShow=arr=>arr.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',status:x.status,n:+x.n||0}));
-        window._showRows=mkShow(srows); window._showRowsPrev=mkShow(sPRaw);
         // no-show por anticipación en filas (team,loc,bucket,status)
         window._leadRows=lccRaw.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',bucket:x.lead_bucket,status:x.status==='showed'?'showed':'noshow',n:+x.n||0}));
+        // ===== Resultado 1:1 con "citas agendadas" — MISMA base (fecha en que se agendó), NO fecha de la cita =====
+        const PEND=new Set(['confirmed','new','invalid']);
+        const bucketOf=st=>PEND.has(st)?'pending':st;
+        const ocRaw=await arrOf(roc), ocPRaw=await arrOf(rocP);
+        const mkOutcome=arr=>arr.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',status:bucketOf(x.status),n:+x.n||0}));
+        window._outcomeRows=mkOutcome(ocRaw); window._outcomeRowsPrev=mkOutcome(ocPRaw);
+        const obp={};
+        ocRaw.forEach(x=>{ const disp=dispOf(x.created_by_user_id), ln=disp.toLowerCase(), loc=CAL_LOC[x.calendar_id]||'otro', t=teamOf(x.created_by_user_id), st=bucketOf(x.status), n=+x.n||0;
+          const p=(obp[ln]=obp[ln]||{name:disp,team:t,tot:{showed:0,noshow:0,cancelled:0,pending:0},loc:{orlando:{showed:0,noshow:0,cancelled:0,pending:0},kissimmee:{showed:0,noshow:0,cancelled:0,pending:0}}});
+          p.tot[st]+=n; if(p.loc[loc]) p.loc[loc][st]+=n; });
+        window._outcomeByPerson=obp;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -1710,8 +1705,8 @@
     // Visitas traídas → filas desde reportes (loc = ubicación del reporte; team = quién la trajo)
     function anBuildVisRows(list){ const tm=window._agentTeam||{}; const rows=[]; (list||[]).forEach(r=>{ const loc=anLocOfReport(r); (r.visits||[]).forEach(v=>{ const setter=canonName(clean(v.setter)); const selfgen=v.scheduled_by==='Self-gen'||v.subgen===true; let team='otro',prospector=null; if(setter){team='cc';prospector=setter;} else if(selfgen){const c=canonName(clean(v.closer));const t=c?tm[c.toLowerCase()]:null;team=(t==='orlando'||t==='kissimmee')?t:'otro';prospector=c;} rows.push({day:r.date,team,loc,prospector}); }); }); return rows; }
     function anVisDaily(rows){ rows=rows||window._anVisRows||[]; const by={}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)) by[x.day]=(by[x.day]||0)+1; }); return by; }
-    // Show ratio (filas team,loc,status)
-    function anShow(rows){ rows=rows||window._showRows||[]; const o={showed:0,noshow:0,cancelled:0}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)&&(x.status in o)) o[x.status]+=x.n; }); return o; }
+    // Show ratio — MISMA base que "citas agendadas" (fecha en que se agendó, no fecha de la cita)
+    function anOutcome(rows){ rows=rows||window._outcomeRows||[]; const o={showed:0,noshow:0,cancelled:0,pending:0}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)&&(x.status in o)) o[x.status]+=x.n; }); return o; }
     // No-show por anticipación (filas team,loc,bucket,status)
     function anLead(){ const rows=window._leadRows||[]; const lead=[0,1,2,3,4].map(()=>({showed:0,noshow:0})); rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)){ const o=lead[x.bucket]; if(o) o[x.status]+=x.n; } }); return lead; }
     // Ventas (desde reportes) — cc = ventas donde hubo setter; closers = por equipo del closer
@@ -1733,12 +1728,12 @@
       const visDaily=anVisDaily(window._anVisRows); window._anVisDaily=visDaily;
       // KPIs actuales
       const citas=sumVals(citDaily), visitas=sumVals(visDaily);
-      const show=anShow(), sr=showRate(show), dec=show.showed+show.noshow;
+      const show=anOutcome(), sr=showRate(show), dec=show.showed+show.noshow;
       const ventas=anVentas(cur);
       // KPIs mes anterior
       const citasP=sumVals(anCitasDaily(window._citasRowsPrev));
       const visitasP=sumVals(anVisDaily(prevVisRows));
-      const srP=showRate(anShow(window._showRowsPrev));
+      const srP=showRate(anOutcome(window._outcomeRowsPrev));
       const ventasP=anVentas(prev);
       const rc=dec?(sr>=60?'#10b981':sr>=45?'#e6a52c':'#ef4444'):'var(--gray-300)';
 
@@ -1760,18 +1755,20 @@
         <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · toca un punto para ver quién ›</div>
         <div id="an-combo"></div></div>`;
 
+      const showTotal=show.showed+show.noshow+show.cancelled+show.pending;
       const showCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🎯 Show ratio</div>
-        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · de las citas CUYA FECHA cayó en este período (no las agendadas en este período — pueden ser de meses anteriores)</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · de las mismas ${showTotal} citas agendadas de arriba (% es solo de las que ya pasaron)</div>
         <div class="clickable-row" onclick="anDrillShow()" style="display:flex;align-items:center;gap:14px;margin-top:8px;cursor:pointer;border-radius:12px;padding:6px;">
           <div id="an-donut" style="width:140px;flex:0 0 140px;"></div>
           <div style="flex:1;min-width:150px;">
             <div style="font-size:36px;font-weight:800;color:${rc};line-height:1;">${dec?sr+'%':'—'}</div>
-            <div style="font-size:12px;color:var(--gray-500);">llegaron a su cita, de ${dec} citas ›</div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;">
+            <div style="font-size:12px;color:var(--gray-500);">llegaron a su cita, de ${dec} ya resueltas ›</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px;">
               <span style="color:#10b981;font-weight:700;">● ${show.showed} llegó</span>
               <span style="color:#ef4444;font-weight:700;">● ${show.noshow} no llegó</span>
               <span style="color:#94a3b8;font-weight:700;">● ${show.cancelled} canceló</span>
+              <span style="color:#f59e0b;font-weight:700;">● ${show.pending} aún no pasa</span>
             </div>
           </div></div></div>`;
 
@@ -1817,12 +1814,12 @@
       });
     }
     function anMountDonut(id,st){
-      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0;
-      if((showed+noshow+canc)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
+      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0,pend=st.pending||0;
+      if((showed+noshow+canc+pend)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
       mountChart(id,{
         chart:{type:'donut',height:140,fontFamily:'inherit'},
-        series:[showed,noshow,canc], labels:['Llegó','No llegó','Canceló'],
-        colors:['#10b981','#ef4444','#cbd5e1'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
+        series:[showed,noshow,canc,pend], labels:['Llegó','No llegó','Canceló','Aún no pasa'],
+        colors:['#10b981','#ef4444','#cbd5e1','#f59e0b'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
         plotOptions:{pie:{donut:{size:'68%',labels:{show:false}}}},
         tooltip:{y:{formatter:v=>v+' citas'}}
       });
@@ -1861,7 +1858,7 @@
     }
     // Show rate por persona, respetando el filtro global (equipo × ubicación)
     function anDrillShow(){
-      const bp=window._showByPerson||{}; const loc=window._anLoc||'all'; const rows=[];
+      const bp=window._outcomeByPerson||{}; const loc=window._anLoc||'all'; const rows=[];
       Object.values(bp).forEach(p=>{
         if(!anTeamMatch(p.team||'otro')) return;
         const st = loc==='all' ? p.tot : (p.loc&&p.loc[loc]);
