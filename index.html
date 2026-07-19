@@ -565,6 +565,36 @@
         const lrows=await rl.json(); const lead=[0,1,2,3,4].map(b=>({b,showed:0,noshow:0}));
         (Array.isArray(lrows)?lrows:[]).forEach(x=>{ const o=lead[x.lead_bucket]; if(o) o[x.status==='showed'?'showed':'noshow']+=(+x.n||0); });
         window._noshowByLead=lead;
+        // ===== Modelo flexible equipo×ubicación (dashboard Analytics) + mes anterior =====
+        const teamOf=(uid)=>{ const nm=rid[uid]; if(!nm)return 'otro'; const ln=canonName(nm).toLowerCase(); return tm[ln]||'otro'; };
+        const dispOf=(uid)=>{ const nm=rid[uid]; return nm?canonName(nm):'(sin nombre)'; };
+        // mes calendario anterior relativo a `from`
+        const _pd=new Date(from+'T00:00:00'); const _py=_pd.getMonth()===0?_pd.getFullYear()-1:_pd.getFullYear(); const _pm=(_pd.getMonth()+11)%12;
+        const pf=`${_py}-${String(_pm+1).padStart(2,'0')}-01`;
+        const _plast=new Date(_py,_pm+1,0);
+        const pEx=new Date(_plast); pEx.setDate(pEx.getDate()+1);
+        const ptoS=`${pEx.getFullYear()}-${String(pEx.getMonth()+1).padStart(2,'0')}-${String(pEx.getDate()).padStart(2,'0')}`;
+        window._anPrevLabel=pf.slice(0,7);
+        const _pbody=JSON.stringify({from_ts:`${pf}T05:00:00Z`,to_ts:`${ptoS}T05:00:00Z`});
+        const [rdc,rlcc,rdcP,rsP]=await Promise.all([
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_lead_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_pbody}),
+          fetch(`${SUPA_URL}/rest/v1/rpc/appt_show_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_pbody})
+        ]);
+        const arrOf=async(res)=>{ const j=await res.json(); return Array.isArray(j)?j:[]; };
+        const dcRaw=await arrOf(rdc), dcPRaw=await arrOf(rdcP), lccRaw=await arrOf(rlcc), sPRaw=await arrOf(rsP);
+        const mkCitas=arr=>arr.map(x=>({day:x.d,team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',n:+x.n||0}));
+        window._citasRows=mkCitas(dcRaw); window._citasRowsPrev=mkCitas(dcPRaw);
+        // citas por persona/día (loc-split) para el drill de la tendencia
+        const cpd={};
+        dcRaw.forEach(x=>{ const disp=dispOf(x.created_by_user_id), ln=disp.toLowerCase(), loc=CAL_LOC[x.calendar_id]||'otro'; const d=(cpd[x.d]=cpd[x.d]||{}); const p=(d[ln]=d[ln]||{name:disp,team:teamOf(x.created_by_user_id),orlando:0,kissimmee:0,otro:0}); p[loc]=(p[loc]||0)+(+x.n||0); });
+        window._citasPersonDay=cpd;
+        // show ratio en filas (team,loc,status) + mes anterior
+        const mkShow=arr=>arr.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',status:x.status,n:+x.n||0}));
+        window._showRows=mkShow(srows); window._showRowsPrev=mkShow(sPRaw);
+        // no-show por anticipación en filas (team,loc,bucket,status)
+        window._leadRows=lccRaw.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',bucket:x.lead_bucket,status:x.status==='showed'?'showed':'noshow',n:+x.n||0}));
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -754,7 +784,7 @@
       if(view==='closers'){renderRoleView(s,'closer');return;}
       if(view==='mgmt'){renderMgmtView(s);return;}
       if(view==='efectividad'){renderEfectividad(s);return;}
-      if(view==='tendencias'){renderTendencias(s);return;}
+      if(view==='tendencias'){renderAnalytics(s);return;}
       if(view==='global'){renderGlobal(s);return;}
       if(view==='recon'){renderReconView();return;}
       renderProduccion(s); // default (managers)
@@ -781,7 +811,7 @@
       const isMgr=me.role==='manager';
       let nav;
       if(isMgr){
-        nav=[{v:'produccion',ico:'📋',lbl:'Producción'},{v:'tendencias',ico:'📈',lbl:'Tendencias'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
+        nav=[{v:'produccion',ico:'📋',lbl:'Producción'},{v:'tendencias',ico:'📈',lbl:'Análisis'},{v:'efectividad',ico:'📊',lbl:'Efectividad'},{v:'setters',ico:'📞',lbl:'Setters'},
              {v:'closers',ico:'🎯',lbl:'Closers'},{v:'recon',ico:'📅',lbl:'Calendario'}];
         if(isAdmin())nav.push({v:'settings',ico:'⚙️',lbl:'Settings'});
       }else{
@@ -1662,108 +1692,148 @@
       while(d<=ed && g++<400){ days.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); d.setDate(d.getDate()+1); }
       return days;
     }
-    function trendPick(o,team){ o=o||{}; return team==='cc'?(o.cc||0):team==='closers'?(o.closers||0):team==='orlando'?(o.orlando||0):team==='kissimmee'?(o.kissimmee||0):(o.total||0); }
-    function trendData(byDay,team){ const days=trendDays(); return {days,data:days.map(iso=>trendPick(byDay[iso],team))}; }
-    function trendColor(team){ return team==='cc'?'#8b5cf6':(team==='closers'||team==='orlando'||team==='kissimmee')?'#f97316':'#3b82f6'; }
-    function mountTrend(id,byDay,team,unit,kind){
-      const {days,data}=trendData(byDay,team);
-      mountChart(id,{
-        chart:{type:'area',height:210,toolbar:{show:false},fontFamily:'inherit',events:kind?{markerClick:(e,ctx,{dataPointIndex})=>drillDay(kind,days[dataPointIndex]),dataPointSelection:(e,ctx,cfg)=>drillDay(kind,days[cfg.dataPointIndex])}:{}},
-        series:[{name:unit||'',data}],
-        xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
-        yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
-        stroke:{curve:'smooth',width:2.5}, colors:[trendColor(team)],
-        fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.25,opacityTo:0,stops:[0,90]}},
-        dataLabels:{enabled:false}, markers:{size:3,hover:{size:5}},
-        grid:{borderColor:'#eef1f4',strokeDashArray:3}, tooltip:{y:{formatter:v=>v+' '+(unit||'')}}
-      });
-    }
-    function trendCard(cfg){
-      const team=cfg.team, isCl=(team==='closers'||team==='orlando'||team==='kissimmee');
-      const tot=trendData(cfg.byDay,team).data.reduce((a,b)=>a+b,0);
-      const btn=(t,l,active,s)=>`<button onclick="${cfg.setFn}('${t}')" style="padding:${s?'4px 11px':'6px 13px'};border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;border:1px solid ${active?'var(--primary)':'var(--gray-200)'};background:${active?'var(--primary)':'white'};color:${active?'white':'var(--gray-600)'};">${l}</button>`;
-      const sub=isCl?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;justify-content:flex-end;align-items:center;"><span style="font-size:11px;color:var(--gray-400);">Closers:</span>${btn('closers','Ambas',team==='closers',1)}${btn('orlando','Orlando',team==='orlando',1)}${btn('kissimmee','Kissimmee',team==='kissimmee',1)}</div>`:'';
-      return `<div class="section-card" style="margin-bottom:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
-          <div><div style="font-weight:800;font-size:15px;">${cfg.title}</div><div style="font-size:12px;color:var(--gray-400);">${cfg.sub||''}</div></div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;">
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">${btn('all','Todos',team==='all')}${btn('closers','Closers',isCl)}${btn('cc',cfg.ccLabel||'Setters',team==='cc')}</div>
-            ${sub}
-          </div>
-        </div>
-        <div style="font-size:30px;font-weight:800;margin:4px 0 0;">${tot}<span style="font-size:13px;font-weight:600;color:var(--gray-400);"> ${cfg.unit||''}</span></div>
-        <div id="${cfg.chartId}"></div>
+    function showRate(st){ st=st||{}; const d=(st.showed||0)+(st.noshow||0); return d?Math.round((st.showed||0)/d*100):0; }
+
+    // ===================== DASHBOARD ANALYTICS (equipo × ubicación × período) =====================
+    window._anTeam=window._anTeam||'all';   // all | cc | closers
+    window._anLoc=window._anLoc||'all';     // all | orlando | kissimmee
+    function setAnTeam(t){ window._anTeam=t; render(); }
+    function setAnLoc(l){ window._anLoc=l; render(); }
+    function anTeamMatch(team){ const s=window._anTeam||'all'; if(s==='all')return true; if(s==='cc')return team==='cc'; return team==='orlando'||team==='kissimmee'; }
+    function anLocMatch(loc){ const s=window._anLoc||'all'; return s==='all'?true:loc===s; }
+    function anTeamLabel(){ const s=window._anTeam||'all'; return s==='cc'?'Call Center':s==='closers'?'Closers':'Todo el equipo'; }
+    function anLocLabel(){ const s=window._anLoc||'all'; return s==='all'?'ambas ubicaciones':s==='orlando'?'Orlando':'Kissimmee'; }
+    function anLocOfReport(r){ const l=(r.location||'').toLowerCase(); return l.indexOf('orl')>=0?'orlando':l.indexOf('kis')>=0?'kissimmee':'otro'; }
+    function anSaleTeam(v){ const tm=window._agentTeam||{}; const c=canonName(clean(v.closer)); const t=c?tm[c.toLowerCase()]:null; return (t==='orlando'||t==='kissimmee')?t:'otro'; }
+    // Citas por día (filas team,loc → conteo por día)
+    function anCitasDaily(rows){ rows=rows||window._citasRows||[]; const by={}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)) by[x.day]=(by[x.day]||0)+x.n; }); return by; }
+    // Visitas traídas → filas desde reportes (loc = ubicación del reporte; team = quién la trajo)
+    function anBuildVisRows(list){ const tm=window._agentTeam||{}; const rows=[]; (list||[]).forEach(r=>{ const loc=anLocOfReport(r); (r.visits||[]).forEach(v=>{ const setter=canonName(clean(v.setter)); const selfgen=v.scheduled_by==='Self-gen'||v.subgen===true; let team='otro',prospector=null; if(setter){team='cc';prospector=setter;} else if(selfgen){const c=canonName(clean(v.closer));const t=c?tm[c.toLowerCase()]:null;team=(t==='orlando'||t==='kissimmee')?t:'otro';prospector=c;} rows.push({day:r.date,team,loc,prospector}); }); }); return rows; }
+    function anVisDaily(rows){ rows=rows||window._anVisRows||[]; const by={}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)) by[x.day]=(by[x.day]||0)+1; }); return by; }
+    // Show ratio (filas team,loc,status)
+    function anShow(rows){ rows=rows||window._showRows||[]; const o={showed:0,noshow:0,cancelled:0}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)&&(x.status in o)) o[x.status]+=x.n; }); return o; }
+    // No-show por anticipación (filas team,loc,bucket,status)
+    function anLead(){ const rows=window._leadRows||[]; const lead=[0,1,2,3,4].map(()=>({showed:0,noshow:0})); rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)){ const o=lead[x.bucket]; if(o) o[x.status]+=x.n; } }); return lead; }
+    // Ventas (desde reportes) — cc = ventas donde hubo setter; closers = por equipo del closer
+    function anVentas(list){ const sel=window._anTeam||'all'; let active=0,total=0; (list||[]).forEach(r=>{ const loc=anLocOfReport(r); if(!anLocMatch(loc))return; (r.visits||[]).forEach(v=>{ if(v.sale!==true)return; const pass=sel==='cc'?!!clean(v.setter):anTeamMatch(anSaleTeam(v)); if(!pass)return; total++; if(v.cancelled!==true)active++; }); }); return {total,active}; }
+    // Top agendadores (citas por persona, filtrado)
+    function anTopCitas(){ const cpd=window._citasPersonDay||{}; const agg={}; Object.keys(cpd).forEach(d=>{ const day=cpd[d]; Object.keys(day).forEach(ln=>{ const p=day[ln]; if(!anTeamMatch(p.team))return; let n=0; if((window._anLoc||'all')==='all')n=(p.orlando||0)+(p.kissimmee||0)+(p.otro||0); else n=p[window._anLoc]||0; if(n<=0)return; const a=(agg[ln]=agg[ln]||{name:p.name,n:0}); a.n+=n; }); }); return Object.values(agg).sort((x,y)=>y.n-x.n); }
+    function sumVals(o){ return Object.values(o).reduce((a,b)=>a+b,0); }
+    function anDeltaObj(cur,prev,pp){ let d,txt; if(pp){ d=cur-prev; txt=(d>=0?'▲ +':'▼ ')+Math.abs(d)+' pts'; } else { if(!prev){ return {txt: cur>0?'nuevo':'—', color:'var(--gray-400)'}; } d=Math.round((cur-prev)/prev*100); txt=(d>=0?'▲ ':'▼ ')+Math.abs(d)+'%'; } return {txt, color:d>0?'#10b981':d<0?'#ef4444':'var(--gray-400)'}; }
+    function anSeg(cur,opts,fn){ return `<div style="display:inline-flex;background:var(--gray-100);border-radius:12px;padding:3px;gap:2px;">`+opts.map(o=>`<button onclick="${fn}('${o.v}')" style="padding:7px 14px;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;background:${cur===o.v?'white':'transparent'};color:${cur===o.v?'var(--primary)':'var(--gray-500)'};box-shadow:${cur===o.v?'0 1px 3px rgba(0,0,0,.12)':'none'};transition:all .15s;">${o.l}</button>`).join('')+`</div>`; }
+    function anKpi(icon,label,val,suf,dl,color){ return `<div class="section-card" style="padding:14px 16px;flex:1;min-width:148px;"><div style="font-size:12px;color:var(--gray-500);font-weight:600;">${icon} ${label}</div><div style="font-size:29px;font-weight:800;color:${color||'var(--gray-900)'};line-height:1.12;margin-top:3px;">${val}<span style="font-size:14px;font-weight:600;color:var(--gray-400);">${suf||''}</span></div><div style="font-size:11px;font-weight:700;color:${dl.color};margin-top:2px;">${dl.txt} <span style="color:var(--gray-400);font-weight:500;">vs mes pasado</span></div></div>`; }
+
+    function renderAnalytics(s){
+      const cur=(allReports||[]).filter(r=>inPeriod(r.date));
+      const prevLbl=window._anPrevLabel||'';
+      const prev=(allReports||[]).filter(r=>r.date&&String(r.date).slice(0,7)===prevLbl);
+      window._anVisRows=anBuildVisRows(cur);
+      const prevVisRows=anBuildVisRows(prev);
+      const citDaily=anCitasDaily();               window._anCitDaily=citDaily;
+      const visDaily=anVisDaily(window._anVisRows); window._anVisDaily=visDaily;
+      // KPIs actuales
+      const citas=sumVals(citDaily), visitas=sumVals(visDaily);
+      const show=anShow(), sr=showRate(show), dec=show.showed+show.noshow;
+      const ventas=anVentas(cur);
+      // KPIs mes anterior
+      const citasP=sumVals(anCitasDaily(window._citasRowsPrev));
+      const visitasP=sumVals(anVisDaily(prevVisRows));
+      const srP=showRate(anShow(window._showRowsPrev));
+      const ventasP=anVentas(prev);
+      const rc=dec?(sr>=60?'#10b981':sr>=45?'#e6a52c':'#ef4444'):'var(--gray-300)';
+
+      const filterBar=`<div class="section-card" style="margin-bottom:14px;padding:13px 16px;">
+        <div style="display:flex;flex-wrap:wrap;gap:18px;">
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:6px;">Equipo</div>${anSeg(window._anTeam,[{v:'all',l:'Todos'},{v:'cc',l:'Call Center'},{v:'closers',l:'Closers'}],'setAnTeam')}</div>
+          <div><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:6px;">Ubicación</div>${anSeg(window._anLoc,[{v:'all',l:'Ambas'},{v:'orlando',l:'Orlando'},{v:'kissimmee',l:'Kissimmee'}],'setAnLoc')}</div>
+        </div></div>`;
+
+      const kpis=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        ${anKpi('📅','Citas agendadas',citas,'',anDeltaObj(citas,citasP),'#3b82f6')}
+        ${anKpi('🚶','Visitas traídas',visitas,'',anDeltaObj(visitas,visitasP),'#f97316')}
+        ${anKpi('🎯','Show rate',dec?sr:'—',dec?'%':'',anDeltaObj(sr,srP,true),rc)}
+        ${anKpi('💰','Ventas',fmtW(ventas.active),'',anDeltaObj(ventas.active,ventasP.active),'#8b5cf6')}
       </div>`;
-    }
-    // Visitas TRAÍDAS por día, agrupadas por quién las trajo (setter=cc, o self-gen=closer por locación). No por quién atendió.
-    function visitBroughtByTeam(s){
-      const tm=window._agentTeam||{}; const byDay={}; const byPersonDay={};
-      (s.reports||[]).forEach(r=>(r.visits||[]).forEach(v=>{
-        const setter=canonName(clean(v.setter)); const selfgen=v.scheduled_by==='Self-gen'||v.subgen===true;
-        let team='otro', prospector=null;
-        if(setter){ team='cc'; prospector=setter; }
-        else if(selfgen){ const c=canonName(clean(v.closer)); const t=c?tm[c.toLowerCase()]:null; team=(t==='orlando'||t==='kissimmee')?t:'otro'; prospector=c; }
-        const day=(byDay[r.date]=byDay[r.date]||{cc:0,orlando:0,kissimmee:0,closers:0,otro:0,total:0});
-        if(team==='cc')day.cc++; else if(team==='orlando'){day.orlando++;day.closers++;} else if(team==='kissimmee'){day.kissimmee++;day.closers++;} else day.otro++;
-        day.total++;
-        if(prospector){ const ln=prospector.toLowerCase(); (byPersonDay[ln]=byPersonDay[ln]||{name:prospector,days:{}}); byPersonDay[ln].days[r.date]=(byPersonDay[ln].days[r.date]||0)+1; }
-      }));
-      window._visByPersonDay=byPersonDay;
-      return byDay;
-    }
-    function renderTendencias(s){
-      const apptBy=window._apptsDailyByTeam||{};
-      const visBy=visitBroughtByTeam(s);
-      const at=window._apptTeam||'all', vt=window._visTeam||'all';
-      const ss=window._showStats||{overall:{},loc:{orlando:{},kissimmee:{}},team:{cc:{},orlando:{},kissimmee:{}}};
-      const dbox=(id,label,st,mode,key)=>{ st=st||{}; const dec=(st.showed||0)+(st.noshow||0); const rate=showRate(st); const rc=rate>=60?'#10b981':rate>=45?'#e6a52c':'#ef4444'; return `<div class="clickable-row" onclick="drillShow('${mode}','${key}','${label.replace(/'/g,"")}')" style="flex:1;min-width:135px;text-align:center;cursor:pointer;border-radius:12px;padding:4px 2px;"><div id="${id}"></div><div style="font-size:22px;font-weight:800;color:${dec?rc:'var(--gray-300)'};margin-top:-8px;">${dec?rate+'%':'—'}</div><div style="font-size:12px;font-weight:700;color:var(--gray-700);">${label} ›</div><div style="font-size:11px;color:var(--gray-400);">${dec} cita${dec===1?'':'s'}${st.cancelled?' · '+st.cancelled+' canc.':''}</div></div>`; };
+
+      const trendCard=`<div class="section-card" style="margin-bottom:14px;">
+        <div style="font-weight:800;font-size:15px;">📈 Citas y visitas por día</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · toca un punto para ver quién ›</div>
+        <div id="an-combo"></div></div>`;
+
       const showCard=`<div class="section-card" style="margin-bottom:14px;">
-        <div style="font-weight:800;font-size:15px;">🎯 Show ratio — llegaron vs no llegaron</div>
-        <div style="font-size:12px;color:var(--gray-400);">${periodLabel()} · % que se presentó a la cita (verde llegó · rojo no llegó · gris canceló)</div>
-        <div style="display:flex;justify-content:center;margin-top:10px;">${dbox('sr-gen','Auto Republic — general',ss.overall,'overall','')}</div>
-        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por locación</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-orl','Orlando',ss.loc.orlando,'loc','orlando')}${dbox('sr-kis','Kissimmee',ss.loc.kissimmee,'loc','kissimmee')}</div></div>
-        <div style="margin-top:14px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:2px;">Por equipo</div><div style="display:flex;gap:8px;flex-wrap:wrap;">${dbox('sr-cc','Call Center',ss.team.cc,'team','cc')}${dbox('sr-tor','Closers Orlando',ss.team.orlando,'team','orlando')}${dbox('sr-tki','Closers Kissimmee',ss.team.kissimmee,'team','kissimmee')}</div></div>
-      </div>`;
+        <div style="font-weight:800;font-size:15px;">🎯 Show ratio</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · % que se presentó a su cita</div>
+        <div class="clickable-row" onclick="anDrillShow()" style="display:flex;align-items:center;gap:14px;margin-top:8px;cursor:pointer;border-radius:12px;padding:6px;">
+          <div id="an-donut" style="width:140px;flex:0 0 140px;"></div>
+          <div style="flex:1;min-width:150px;">
+            <div style="font-size:36px;font-weight:800;color:${rc};line-height:1;">${dec?sr+'%':'—'}</div>
+            <div style="font-size:12px;color:var(--gray-500);">llegaron a su cita ›</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;">
+              <span style="color:#10b981;font-weight:700;">● ${show.showed} llegó</span>
+              <span style="color:#ef4444;font-weight:700;">● ${show.noshow} no llegó</span>
+              <span style="color:#94a3b8;font-weight:700;">● ${show.cancelled} canceló</span>
+            </div>
+          </div></div></div>`;
+
       const noshowCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🔴 Riesgo de no-show por anticipación</div>
-        <div style="font-size:12px;color:var(--gray-400);">Cuántos días antes se agendó la cita → % que NO llegó. Entre más lejos se agenda, más se cae.</div>
-        <div id="noshow-lead"></div>
-      </div>`;
+        <div style="font-size:12px;color:var(--gray-400);">Cuántos días antes se agendó → % que NO llegó · toca una barra para ver quién ›</div>
+        <div id="an-noshow"></div></div>`;
+
+      const top=anTopCitas().slice(0,10); const topMax=top.length?top[0].n:1;
+      const topCard=`<div class="section-card" style="margin-bottom:14px;">
+        <div style="font-weight:800;font-size:15px;">🏆 Top agendadores</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · citas agendadas · toca para el perfil</div>
+        <div style="margin-top:8px;">${top.length?top.map((r,i)=>`<div class="clickable-row" onclick="goProfile('${escapeAttr(r.name)}','${facetForName(r.name)}')" style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--gray-100);cursor:pointer;">
+          <span style="color:var(--gray-400);font-size:12px;width:16px;">${i+1}.</span>
+          <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escapeHtml(r.name)}</div><div style="height:5px;border-radius:3px;background:var(--gray-100);margin-top:4px;overflow:hidden;"><div style="height:100%;width:${Math.round(r.n/topMax*100)}%;background:#3b82f6;border-radius:3px;"></div></div></div>
+          <span style="font-weight:800;font-size:14px;white-space:nowrap;">${r.n}</span></div>`).join(''):'<div class="empty">Sin datos</div>'}</div></div>`;
+
       document.getElementById('main-content').innerHTML=
-        `<div class="page-title">Tendencias</div>
-         <div class="page-sub">${periodLabel()}${filterLoc!=='all'?' · '+filterLoc:''} · agendamiento, visitas y show ratio</div>
-         <div style="margin-top:14px;">`+
-        trendCard({chartId:'trend-appts', byDay:apptBy, team:at, setFn:'setApptTeam', title:'📅 Citas agendadas — por día', sub:'Quién agendó la cita', ccLabel:'Call Center', unit:'citas'})+
-        trendCard({chartId:'trend-visits', byDay:visBy, team:vt, setFn:'setVisTeam', title:'🚶 Visitas traídas — por día', sub:'Quién trajo la visita (setter o self-gen) · no quién la atendió', ccLabel:'Setters', unit:'visitas'})+
-        showCard+noshowCard+
-        `</div>`;
-      mountTrend('trend-appts', apptBy, at, 'citas', 'appts');
-      mountTrend('trend-visits', visBy, vt, 'visitas', 'visits');
-      mountDonut('sr-gen',ss.overall); mountDonut('sr-orl',ss.loc.orlando); mountDonut('sr-kis',ss.loc.kissimmee);
-      mountDonut('sr-cc',ss.team.cc); mountDonut('sr-tor',ss.team.orlando); mountDonut('sr-tki',ss.team.kissimmee);
-      mountNoshowChart();
+        `<div class="page-title">Análisis de producción</div>
+         <div class="page-sub">${periodLabel()} · citas, visitas y show ratio por equipo y ubicación</div>
+         <div style="margin-top:14px;">`+filterBar+kpis+trendCard+showCard+noshowCard+topCard+`</div>`;
+      anMountCombo('an-combo');
+      anMountDonut('an-donut', show);
+      anMountNoshow('an-noshow');
     }
-    function setApptTeam(t){ window._apptTeam=t; render(); }
-    function setVisTeam(t){ window._visTeam=t; render(); }
-    function showRate(st){ st=st||{}; const d=(st.showed||0)+(st.noshow||0); return d?Math.round((st.showed||0)/d*100):0; }
-    function mountDonut(id,st){
-      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0, rate=showRate(st);
-      if((showed+noshow+canc)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:150px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
+
+    function anMountCombo(id){
+      const days=trendDays();
+      const cit=days.map(d=>(window._anCitDaily||{})[d]||0);
+      const vis=days.map(d=>(window._anVisDaily||{})[d]||0);
       mountChart(id,{
-        chart:{type:'donut',height:150,fontFamily:'inherit'},
+        chart:{type:'area',height:270,toolbar:{show:false},fontFamily:'inherit',events:{
+          dataPointSelection:(e,ctx,cfg)=>anDrillDay(cfg.seriesIndex===1?'vis':'cit',days[cfg.dataPointIndex]),
+          markerClick:(e,ctx,{seriesIndex,dataPointIndex})=>anDrillDay(seriesIndex===1?'vis':'cit',days[dataPointIndex])}},
+        series:[{name:'Citas agendadas',data:cit},{name:'Visitas traídas',data:vis}],
+        xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
+        yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
+        stroke:{curve:'smooth',width:2.5}, colors:['#3b82f6','#f97316'],
+        fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.20,opacityTo:0,stops:[0,90]}},
+        dataLabels:{enabled:false}, markers:{size:3,hover:{size:5}},
+        legend:{show:true,position:'top',horizontalAlign:'right',fontSize:'12px',markers:{width:9,height:9,radius:9},itemMargin:{horizontal:8}},
+        grid:{borderColor:'#eef1f4',strokeDashArray:3}, tooltip:{shared:true}
+      });
+    }
+    function anMountDonut(id,st){
+      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0;
+      if((showed+noshow+canc)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
+      mountChart(id,{
+        chart:{type:'donut',height:140,fontFamily:'inherit'},
         series:[showed,noshow,canc], labels:['Llegó','No llegó','Canceló'],
         colors:['#10b981','#ef4444','#cbd5e1'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
-        plotOptions:{pie:{donut:{size:'66%',labels:{show:false}}}},
+        plotOptions:{pie:{donut:{size:'68%',labels:{show:false}}}},
         tooltip:{y:{formatter:v=>v+' citas'}}
       });
     }
-    function mountNoshowChart(){
-      const nl=window._noshowByLead||[];
+    function anMountNoshow(id){
+      const nl=anLead();
       const cats=['Mismo día','Sig. día','2-3 días','4-7 días','8+ días'];
       const data=nl.map(o=>{const t=o.showed+o.noshow;return t?Math.round(o.noshow/t*100):0;});
       const counts=nl.map(o=>o.showed+o.noshow);
-      mountChart('noshow-lead',{
-        chart:{type:'bar',height:240,toolbar:{show:false},fontFamily:'inherit',events:{dataPointSelection:(e,ctx,cfg)=>drillLead(cfg.dataPointIndex)}},
+      mountChart(id,{
+        chart:{type:'bar',height:240,toolbar:{show:false},fontFamily:'inherit',events:{dataPointSelection:(e,ctx,cfg)=>anDrillLead(cfg.dataPointIndex)}},
         series:[{name:'No-show',data}],
         xaxis:{categories:cats,labels:{style:{colors:'#94a3b8'}}},
         colors:['#ef4444'],
@@ -1789,35 +1859,36 @@
           <div style="margin-top:10px;">${body}</div>
         </div></div>`);
     }
-    function drillShow(mode, key, title){
-      const bp=window._showByPerson||{}; const rows=[];
+    // Show rate por persona, respetando el filtro global (equipo × ubicación)
+    function anDrillShow(){
+      const bp=window._showByPerson||{}; const loc=window._anLoc||'all'; const rows=[];
       Object.values(bp).forEach(p=>{
-        let st = mode==='loc' ? p.loc[key] : p.tot;
-        if(mode==='team' && p.team!==key) return;
-        if(!st) return; const dec=(st.showed||0)+(st.noshow||0); if(!dec) return;
-        rows.push({name:p.name, rate:Math.round((st.showed||0)/dec*100), dec, showed:st.showed||0, noshow:st.noshow||0});
+        if(!anTeamMatch(p.team||'otro')) return;
+        const st = loc==='all' ? p.tot : (p.loc&&p.loc[loc]);
+        if(!st) return; const d=(st.showed||0)+(st.noshow||0); if(!d) return;
+        rows.push({name:p.name, rate:Math.round((st.showed||0)/d*100), dec:d, showed:st.showed||0, noshow:st.noshow||0});
       });
       rows.sort((a,b)=>b.dec-a.dec);
-      drillModal('Show rate · '+title, 'Show rate individual de cada persona · '+periodLabel(),
+      drillModal('🎯 Show rate · '+anTeamLabel()+' · '+anLocLabel(), 'Show rate individual · '+periodLabel(),
         rows.map(r=>({name:r.name, main:r.rate+'%', color:r.rate>=60?'#10b981':r.rate>=45?'#e6a52c':'#ef4444', sub:`${r.showed} llegó · ${r.noshow} no llegó · ${r.dec} citas`})));
     }
-    function drillLead(bucket){
-      const lp=(window._leadByPerson||{})[bucket]||{};
-      const rows=Object.values(lp).map(p=>{ const dec=p.showed+p.noshow; return {name:p.name, noshow:p.noshow, dec, rate:dec?Math.round(p.noshow/dec*100):0}; }).filter(r=>r.dec>0);
+    function anDrillLead(bucket){
+      const lp=(window._leadByPerson||{})[bucket]||{}; const tm=window._agentTeam||{};
+      const rows=Object.values(lp).map(p=>{ const t=tm[(p.name||'').toLowerCase()]||'otro'; const dec=p.showed+p.noshow; return {name:p.name,team:t,noshow:p.noshow,dec,rate:dec?Math.round(p.noshow/dec*100):0}; })
+        .filter(r=>r.dec>0 && anTeamMatch(r.team));
       rows.sort((a,b)=>b.noshow-a.noshow||b.dec-a.dec);
       const names=['mismo día','siguiente día','2-3 días','4-7 días','8+ días'];
-      drillModal('Citas agendadas con '+names[bucket]+' de anticipación', 'Quién las agendó · ordenado por no-show · '+periodLabel(),
+      drillModal('📅 Citas con '+names[bucket]+' de anticipación', 'Quién las agendó · '+anTeamLabel()+' · ordenado por no-show',
         rows.map(r=>({name:r.name, main:r.noshow+' no-show', color:'#ef4444', sub:`${r.dec} citas · ${r.rate}% no-show`})));
     }
-    function drillDay(kind, day){
-      const rows=[];
-      if(kind==='appts'){ const src=window._apptsDailyByName||{}, nm=window._apptsByName||{};
-        Object.entries(src).forEach(([ln,byDay])=>{ const n=byDay[day]||0; if(n>0) rows.push({name:(nm[ln]&&nm[ln].name)||ln, n}); }); }
-      else { const src=window._visByPersonDay||{};
-        Object.values(src).forEach(p=>{ const n=(p.days||{})[day]||0; if(n>0) rows.push({name:p.name, n}); }); }
+    function anDrillDay(kind, day){
+      const rows=[]; const loc=window._anLoc||'all';
+      if(kind==='cit'){ const cpd=window._citasPersonDay||{}; const day1=cpd[day]||{};
+        Object.values(day1).forEach(p=>{ if(!anTeamMatch(p.team))return; const n=loc==='all'?((p.orlando||0)+(p.kissimmee||0)+(p.otro||0)):(p[loc]||0); if(n>0)rows.push({name:p.name,n}); }); }
+      else { (window._anVisRows||[]).forEach(x=>{ if(x.day!==day||!x.prospector)return; if(!anTeamMatch(x.team)||!anLocMatch(x.loc))return; const ln=x.prospector.toLowerCase(); let f=rows.find(r=>r._ln===ln); if(!f){f={_ln:ln,name:x.prospector,n:0};rows.push(f);} f.n++; }); }
       rows.sort((a,b)=>b.n-a.n);
       const dp=day.split('-');
-      drillModal((kind==='appts'?'📅 Citas agendadas':'🚶 Visitas traídas')+' · '+(+dp[2])+' '+MONTHS[(+dp[1])-1], 'Por persona ese día',
+      drillModal((kind==='cit'?'📅 Citas agendadas':'🚶 Visitas traídas')+' · '+(+dp[2])+' '+MONTHS[(+dp[1])-1], anTeamLabel()+' · '+anLocLabel(),
         rows.map(r=>({name:r.name, main:r.n+'', color:'var(--gray-900)'})));
     }
 
