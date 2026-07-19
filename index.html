@@ -580,14 +580,14 @@
         // no-show por anticipación en filas (team,loc,bucket,status)
         window._leadRows=lccRaw.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',bucket:x.lead_bucket,status:x.status==='showed'?'showed':'noshow',n:+x.n||0}));
         // ===== Resultado 1:1 con "citas agendadas" — MISMA base (fecha en que se agendó), NO fecha de la cita =====
-        const PEND=new Set(['confirmed','new','invalid']);
-        const bucketOf=st=>PEND.has(st)?'pending':st;
+        // status ya viene separado desde el RPC: showed/noshow/cancelled/pending_future (aún no llega la fecha)/pending_stale (ya pasó la fecha y nadie la marcó en el CRM)
         const ocRaw=await arrOf(roc), ocPRaw=await arrOf(rocP);
-        const mkOutcome=arr=>arr.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',status:bucketOf(x.status),n:+x.n||0}));
+        const mkOutcome=arr=>arr.map(x=>({team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',status:x.status,n:+x.n||0}));
         window._outcomeRows=mkOutcome(ocRaw); window._outcomeRowsPrev=mkOutcome(ocPRaw);
+        const outBlank=()=>({showed:0,noshow:0,cancelled:0,pending_future:0,pending_stale:0});
         const obp={};
-        ocRaw.forEach(x=>{ const disp=dispOf(x.created_by_user_id), ln=disp.toLowerCase(), loc=CAL_LOC[x.calendar_id]||'otro', t=teamOf(x.created_by_user_id), st=bucketOf(x.status), n=+x.n||0;
-          const p=(obp[ln]=obp[ln]||{name:disp,team:t,tot:{showed:0,noshow:0,cancelled:0,pending:0},loc:{orlando:{showed:0,noshow:0,cancelled:0,pending:0},kissimmee:{showed:0,noshow:0,cancelled:0,pending:0}}});
+        ocRaw.forEach(x=>{ const disp=dispOf(x.created_by_user_id), ln=disp.toLowerCase(), loc=CAL_LOC[x.calendar_id]||'otro', t=teamOf(x.created_by_user_id), st=x.status, n=+x.n||0;
+          const p=(obp[ln]=obp[ln]||{name:disp,team:t,tot:outBlank(),loc:{orlando:outBlank(),kissimmee:outBlank()}});
           p.tot[st]+=n; if(p.loc[loc]) p.loc[loc][st]+=n; });
         window._outcomeByPerson=obp;
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
@@ -1706,7 +1706,7 @@
     function anBuildVisRows(list){ const tm=window._agentTeam||{}; const rows=[]; (list||[]).forEach(r=>{ const loc=anLocOfReport(r); (r.visits||[]).forEach(v=>{ const setter=canonName(clean(v.setter)); const selfgen=v.scheduled_by==='Self-gen'||v.subgen===true; let team='otro',prospector=null; if(setter){team='cc';prospector=setter;} else if(selfgen){const c=canonName(clean(v.closer));const t=c?tm[c.toLowerCase()]:null;team=(t==='orlando'||t==='kissimmee')?t:'otro';prospector=c;} rows.push({day:r.date,team,loc,prospector}); }); }); return rows; }
     function anVisDaily(rows){ rows=rows||window._anVisRows||[]; const by={}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)) by[x.day]=(by[x.day]||0)+1; }); return by; }
     // Show ratio — MISMA base que "citas agendadas" (fecha en que se agendó, no fecha de la cita)
-    function anOutcome(rows){ rows=rows||window._outcomeRows||[]; const o={showed:0,noshow:0,cancelled:0,pending:0}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)&&(x.status in o)) o[x.status]+=x.n; }); return o; }
+    function anOutcome(rows){ rows=rows||window._outcomeRows||[]; const o={showed:0,noshow:0,cancelled:0,pending_future:0,pending_stale:0}; rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)&&(x.status in o)) o[x.status]+=x.n; }); return o; }
     // No-show por anticipación (filas team,loc,bucket,status)
     function anLead(){ const rows=window._leadRows||[]; const lead=[0,1,2,3,4].map(()=>({showed:0,noshow:0})); rows.forEach(x=>{ if(anTeamMatch(x.team)&&anLocMatch(x.loc)){ const o=lead[x.bucket]; if(o) o[x.status]+=x.n; } }); return lead; }
     // Ventas (desde reportes) — cc = ventas donde hubo setter; closers = por equipo del closer
@@ -1755,10 +1755,11 @@
         <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · toca un punto para ver quién ›</div>
         <div id="an-combo"></div></div>`;
 
-      const showTotal=show.showed+show.noshow+show.cancelled+show.pending;
+      const showTotal=show.showed+show.noshow+show.cancelled+show.pending_future+show.pending_stale;
+      const staleWarn=show.pending_stale>0?`<div style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:11.5px;color:#92400e;line-height:1.4;">⚠️ ${show.pending_stale} citas ya pasaron su fecha y nadie les puso resultado en el CRM (ni llegó, ni no llegó, ni canceló) — hay que actualizarlas para que el % sea real.</div>`:'';
       const showCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🎯 Show ratio</div>
-        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · de las mismas ${showTotal} citas agendadas de arriba (% es solo de las que ya pasaron)</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · de las mismas ${showTotal} citas agendadas de arriba (% es solo de las que ya se resolvieron)</div>
         <div class="clickable-row" onclick="anDrillShow()" style="display:flex;align-items:center;gap:14px;margin-top:8px;cursor:pointer;border-radius:12px;padding:6px;">
           <div id="an-donut" style="width:140px;flex:0 0 140px;"></div>
           <div style="flex:1;min-width:150px;">
@@ -1768,8 +1769,10 @@
               <span style="color:#10b981;font-weight:700;">● ${show.showed} llegó</span>
               <span style="color:#ef4444;font-weight:700;">● ${show.noshow} no llegó</span>
               <span style="color:#94a3b8;font-weight:700;">● ${show.cancelled} canceló</span>
-              <span style="color:#f59e0b;font-weight:700;">● ${show.pending} aún no pasa</span>
+              <span style="color:#60a5fa;font-weight:700;">● ${show.pending_future} por venir</span>
+              <span style="color:#f59e0b;font-weight:700;">● ${show.pending_stale} sin marcar</span>
             </div>
+            ${staleWarn}
           </div></div></div>`;
 
       const noshowCard=`<div class="section-card" style="margin-bottom:14px;">
@@ -1814,12 +1817,12 @@
       });
     }
     function anMountDonut(id,st){
-      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0,pend=st.pending||0;
-      if((showed+noshow+canc+pend)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
+      st=st||{}; const showed=st.showed||0,noshow=st.noshow||0,canc=st.cancelled||0,futura=st.pending_future||0,stale=st.pending_stale||0;
+      if((showed+noshow+canc+futura+stale)===0){ const el=document.getElementById(id); if(el)el.innerHTML='<div style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--gray-300);font-size:12px;">Sin citas</div>'; return; }
       mountChart(id,{
         chart:{type:'donut',height:140,fontFamily:'inherit'},
-        series:[showed,noshow,canc,pend], labels:['Llegó','No llegó','Canceló','Aún no pasa'],
-        colors:['#10b981','#ef4444','#cbd5e1','#f59e0b'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
+        series:[showed,noshow,canc,futura,stale], labels:['Llegó','No llegó','Canceló','Por venir','Sin marcar'],
+        colors:['#10b981','#ef4444','#cbd5e1','#60a5fa','#f59e0b'], legend:{show:false}, dataLabels:{enabled:false}, stroke:{width:0},
         plotOptions:{pie:{donut:{size:'68%',labels:{show:false}}}},
         tooltip:{y:{formatter:v=>v+' citas'}}
       });
