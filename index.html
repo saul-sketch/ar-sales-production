@@ -338,7 +338,7 @@
     function todayKey(){const t=new Date();return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;}
     // Día ancla para el paso día-por-día: si ya estoy en un día suelto, ese; si no, hoy.
     function dayAnchor(){if(filterPeriod.startsWith('range:')){const p=filterPeriod.split(':');if(p[1]===p[2])return p[1];}return todayKey();}
-    function dayLabel(dk){const d=new Date(dk+'T00:00:00');const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return `${dias[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`;}
+    function dayLabel(dk){const d=new Date(dk+'T00:00:00');const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];return `${dias[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`;}
     // Mueve el día ancla ±1 (no pasa de hoy hacia el futuro).
     function stepDay(delta){const d=new Date(dayAnchor()+'T00:00:00');d.setDate(d.getDate()+delta);const nd=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;if(nd>todayKey())return;setPeriod('range:'+nd+':'+nd);}
     function renderPeriodBar(){
@@ -904,7 +904,7 @@
             const closers=[c1,c2].filter(Boolean).map(n=>`<span class="kd-lnk" onclick="kdClose();goProfile('${escapeAttr(n)}','close')">${escapeHtml(n)}</span>`).join(' + ')||'<span style="color:var(--gray-400);">—</span>';
             const sg=v.scheduled_by==='Self-gen'||v.subgen===true;
             const brought= st && st!=='N/A' ? `<span class="kd-lnk" onclick="kdClose();goProfile('${escapeAttr(st)}','prospect')">${escapeHtml(st)}</span>` : (sg?'<span style="color:#10b981;">Self-gen</span>':'<span style="color:var(--gray-400);">Walk-in</span>');
-            const d=new Date(v._date+'T00:00:00'),dn=`${d.getDate()}/${d.getMonth()+1}`;
+            const d=new Date(v._date+'T00:00:00'),dn=`${d.getMonth()+1}/${d.getDate()}`;
             const profit=v.sale===true?(v.net_profit||0):0;
             return `<tr><td style="white-space:nowrap;font-weight:600;">${dn}</td><td>${escapeHtml(v.name||'—')}</td><td>${closers}</td><td>${brought}</td><td style="font-size:11px;color:var(--gray-500);">${(v._loc||'').slice(0,3)}</td>${metric==='monto'||metric==='sold'?`<td style="text-align:right;font-weight:700;color:var(--green);">${profit?fmtMoney(profit):'—'}</td>`:''}</tr>`;
           }).join('')}
@@ -955,7 +955,7 @@
       if(!ts)return '<span style="color:var(--gray-400);">nunca</span>';
       const d=new Date(ts), diff=(Date.now()-d.getTime())/1000;
       let s; if(diff<60)s='hace segundos'; else if(diff<3600)s='hace '+Math.floor(diff/60)+' min'; else if(diff<86400)s='hace '+Math.floor(diff/3600)+' h'; else if(diff<172800)s='ayer'; else s='hace '+Math.floor(diff/86400)+' días';
-      return `${s} <span style="color:var(--gray-400);font-size:11px;">(${d.getDate()}/${d.getMonth()+1} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')})</span>`;
+      return `${s} <span style="color:var(--gray-400);font-size:11px;">(${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')})</span>`;
     }
     function accessBadge(t){ const m={user:['Usuario + clave','#3b82f6'],ghl:['Desde el CRM','#10b981'],link:['Link directo','#f59e0b']}; const[l,c]=m[t]||['—','#94a3b8']; return `<span style="font-size:11px;font-weight:700;color:${c};background:${c}1a;padding:3px 8px;border-radius:6px;white-space:nowrap;">${l}</span>`; }
     async function saReload(){ if(view==='settings')renderSettings(); }
@@ -1040,7 +1040,7 @@
         const st=clean(v.setter); const sg=(v.scheduled_by==='Self-gen'||v.subgen===true);
         const trajo = st&&st!=='N/A' ? escapeHtml(st) : (sg?'Self-gen':'Walk-in');
         const badge = v.sale===true?'<span style="color:var(--green);font-weight:700;">Vendió'+(v.net_profit?' · '+fmtMoney(v.net_profit):'')+'</span>':v.result==='approved'?'<span style="color:#8b5cf6;">Aprobó</span>':v.result==='denied'?'<span style="color:var(--red);">Negó</span>':v.applied===true?'<span style="color:var(--blue);">Aplicó</span>':'<span style="color:var(--gray-400);">Vino</span>';
-        const d=new Date((v._date||'')+'T00:00:00'); const dn=isNaN(d)?'':`${d.getDate()}/${d.getMonth()+1}`;
+        const d=new Date((v._date||'')+'T00:00:00'); const dn=isNaN(d)?'':`${d.getMonth()+1}/${d.getDate()}`;
         return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 4px;border-bottom:1px solid var(--gray-100);">
           <div><div style="font-weight:600;">${escapeHtml(v.name||'—')}</div><div style="font-size:11px;color:var(--gray-500);">${dn} · agendó: ${trajo}${v._loc?' · '+String(v._loc).slice(0,3):''}</div></div>
           <div style="text-align:right;font-size:13px;">${badge}</div></div>`;
@@ -1508,7 +1508,7 @@
       const avgMr=totShow>0?(totMatch/totShow*100):0;
       const rows=rec.map(r=>{
         const mr=r.match_rate||0,mrCls=mr>=80?'good':mr>=50?'mid':'low';
-        const d=new Date(r.recon_date+'T00:00:00');const dn=`${d.getDate()}/${d.getMonth()+1}`;
+        const d=new Date(r.recon_date+'T00:00:00');const dn=`${d.getMonth()+1}/${d.getDate()}`;
         const calOnlyNames=(r.detail&&r.detail.calendar_only||[]).map(x=>x.title||('...'+x.phone)).slice(0,4).join(', ');
         return `<tr>
           <td style="font-weight:700;">${dn}</td>
@@ -1761,7 +1761,7 @@
         body = groups.length ? groups.map(g=>{
           const key=g.name.toLowerCase(); const isOpen=openAgents.has(key);
           const items = isOpen ? g.items.map(it=>{
-            const d=new Date(it.start_time); const ds=`${d.getDate()}/${d.getMonth()+1}`;
+            const d=new Date(it.start_time); const ds=`${d.getMonth()+1}/${d.getDate()}`;
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px 6px 28px;border-bottom:1px solid var(--gray-50);font-size:12px;flex-wrap:wrap;">
               <span style="color:var(--gray-400);white-space:nowrap;">${ds}</span>
               ${staleLeadLink(it)}
@@ -1875,7 +1875,7 @@
           dataPointSelection:(e,ctx,cfg)=>anDrillDay(cfg.seriesIndex===1?'vis':'cit',days[cfg.dataPointIndex]),
           markerClick:(e,ctx,{seriesIndex,dataPointIndex})=>anDrillDay(seriesIndex===1?'vis':'cit',days[dataPointIndex])}},
         series:[{name:'Citas agendadas',data:cit},{name:'Visitas traídas',data:vis}],
-        xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[2])+'/'+(+p[1]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
+        xaxis:{categories:days.map(d=>{const p=d.split('-');return (+p[1])+'/'+(+p[2]);}),tickAmount:Math.min(days.length,10),labels:{style:{colors:'#94a3b8',fontSize:'10px'},rotate:0,hideOverlappingLabels:true},axisBorder:{show:false},axisTicks:{show:false}},
         yaxis:{min:0,forceNiceScale:true,labels:{style:{colors:'#94a3b8'}}},
         stroke:{curve:'smooth',width:2.5}, colors:['#3b82f6','#f97316'],
         fill:{type:'gradient',gradient:{shadeIntensity:1,opacityFrom:.20,opacityTo:0,stops:[0,90]}},
