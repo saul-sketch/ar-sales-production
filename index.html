@@ -1762,12 +1762,12 @@
 
       const showCard=`<div class="section-card" style="margin-bottom:14px;">
         <div style="font-weight:800;font-size:15px;">🎯 Show ratio</div>
-        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · % que se presentó a su cita</div>
+        <div style="font-size:12px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · de las citas CUYA FECHA cayó en este período (no las agendadas en este período — pueden ser de meses anteriores)</div>
         <div class="clickable-row" onclick="anDrillShow()" style="display:flex;align-items:center;gap:14px;margin-top:8px;cursor:pointer;border-radius:12px;padding:6px;">
           <div id="an-donut" style="width:140px;flex:0 0 140px;"></div>
           <div style="flex:1;min-width:150px;">
             <div style="font-size:36px;font-weight:800;color:${rc};line-height:1;">${dec?sr+'%':'—'}</div>
-            <div style="font-size:12px;color:var(--gray-500);">llegaron a su cita ›</div>
+            <div style="font-size:12px;color:var(--gray-500);">llegaron a su cita, de ${dec} citas ›</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:12px;">
               <span style="color:#10b981;font-weight:700;">● ${show.showed} llegó</span>
               <span style="color:#ef4444;font-weight:700;">● ${show.noshow} no llegó</span>
