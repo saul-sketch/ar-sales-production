@@ -38,6 +38,16 @@ function normPhone(p) {
   return d.length >= 10 ? d.slice(-10) : (d || null);
 }
 
+async function patchAppt(id, fields) {
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/ghl_appointments?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(fields),
+    });
+  } catch (e) { /* no crítico */ }
+}
+
 async function sql(query) {
   const r = await fetch(SUPA_SQL, {
     method: 'POST',
@@ -79,22 +89,27 @@ async function sql(query) {
       if (!ar.ok) { errors++; continue; }
       const appt = (await ar.json()).appointment || {};
 
-      // Backfill pasivo del nombre del cliente (para la lista "Citas sin marcar" del dashboard)
-      if (appt.title) {
-        await fetch(`${SUPA_URL}/rest/v1/ghl_appointments?id=eq.${c.id}`, {
-          method: 'PATCH',
-          headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-          body: JSON.stringify({ title: appt.title }),
-        });
-      }
-
       const contactId = appt.contactId;
-      if (!contactId) { skipped++; continue; }
+
+      // Backfill pasivo para la lista "Citas sin marcar" del dashboard (título + id de contacto)
+      const meta = {};
+      if (appt.title) meta.title = appt.title;
+      if (contactId) meta.contact_id = contactId;
+
+      if (!contactId) {
+        if (Object.keys(meta).length) await patchAppt(c.id, meta);
+        skipped++; continue;
+      }
 
       const cr = await fetch(`${GHL}/contacts/${contactId}`, { headers: H });
       if (!cr.ok) { errors++; continue; }
       const contact = (await cr.json()).contact || {};
       const phone = normPhone(contact.phone);
+
+      // Nombre real del CRM (para el enlace clickeable del dashboard)
+      const cname = (contact.contactName || `${contact.firstName || ''} ${contact.lastName || ''}`).trim();
+      if (cname) meta.contact_name = cname;
+      if (Object.keys(meta).length) await patchAppt(c.id, meta);
 
       if (!phone || !knownPhones.has(phone)) { skipped++; continue; }
 

@@ -594,7 +594,7 @@
         try{
           const stR=await fetch(`${SUPA_URL}/rest/v1/rpc/appt_stale_list`,{method:'POST',headers:SUPA_HEADERS,body:_body});
           const stRows=await arrOf(stR);
-          window._staleAppts=stRows.map(x=>{ const nm=dispOf(x.created_by_user_id); return {id:x.id,team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',start_time:x.start_time,title:x.title,personLn:nm.toLowerCase(),personName:nm}; });
+          window._staleAppts=stRows.map(x=>{ const nm=dispOf(x.created_by_user_id); return {id:x.id,team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',start_time:x.start_time,title:x.title,contactId:x.contact_id,contactName:x.contact_name,locationId:x.location_id,personLn:nm.toLowerCase(),personName:nm}; });
         }catch(e){ window._staleAppts=[]; }
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
@@ -1725,6 +1725,14 @@
     function anKpi(icon,label,val,suf,dl,color){ return `<div class="section-card" style="padding:14px 16px;flex:1;min-width:148px;"><div style="font-size:12px;color:var(--gray-500);font-weight:600;">${icon} ${label}</div><div style="font-size:29px;font-weight:800;color:${color||'var(--gray-900)'};line-height:1.12;margin-top:3px;">${val}<span style="font-size:14px;font-weight:600;color:var(--gray-400);">${suf||''}</span></div><div style="font-size:11px;font-weight:700;color:${dl.color};margin-top:2px;">${dl.txt} <span style="color:var(--gray-400);font-weight:500;">vs mes pasado</span></div></div>`; }
 
     // ===== Citas sin marcar — cola operativa manager, interconectada con GHL =====
+    // Nombre del lead → enlace al contacto en el CRM (pestaña nueva). Cae al título de la cita si aún no se resolvió el nombre.
+    function staleLeadLink(it){
+      const nm=((it.contactName||'').trim())||((it.title||'').trim())||'(sin nombre)';
+      const base='flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      if(!it.contactId) return `<span style="${base}color:var(--gray-700);">${escapeHtml(nm)}</span>`;
+      const url=`https://app.gohighlevel.com/v2/location/${encodeURIComponent(it.locationId||'')}/contacts/detail/${encodeURIComponent(it.contactId)}`;
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="${base}color:var(--primary);font-weight:600;text-decoration:underline;text-underline-offset:2px;">${escapeHtml(nm)}</a>`;
+    }
     function anStaleGroups(){
       const rows=window._staleAppts||[]; const agg={};
       rows.forEach(r=>{ if(!anTeamMatch(r.team)||!anLocMatch(r.loc))return;
@@ -1756,7 +1764,7 @@
             const d=new Date(it.start_time); const ds=`${d.getDate()}/${d.getMonth()+1}`;
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px 6px 28px;border-bottom:1px solid var(--gray-50);font-size:12px;flex-wrap:wrap;">
               <span style="color:var(--gray-400);white-space:nowrap;">${ds}</span>
-              <span style="flex:1;min-width:80px;color:var(--gray-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml((it.title||'').trim()||'(sin nombre)')}</span>
+              ${staleLeadLink(it)}
               <button onclick="event.stopPropagation();anMarkAppt('${it.id}','showed',this)" style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;border:1px solid #10b981;background:white;color:#10b981;cursor:pointer;">Llegó</button>
               <button onclick="event.stopPropagation();anMarkAppt('${it.id}','noshow',this)" style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;border:1px solid #ef4444;background:white;color:#ef4444;cursor:pointer;">No llegó</button>
             </div>`;

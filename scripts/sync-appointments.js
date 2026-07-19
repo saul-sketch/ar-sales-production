@@ -45,11 +45,12 @@ function esc(v) { return v == null ? 'null' : `'${String(v).replace(/'/g, "''")}
 
 async function upsert(rows) {
   if (!rows.length) return;
-  const values = rows.map(e => `(${esc(e.id)},${esc(e.created_by)},${esc(e.date_added)},${esc(e.start_time)},${esc(e.status)},${esc(e.calendar_id)},${esc(LOC)},${e.deleted ? 'true' : 'false'},${esc(e.title)})`).join(',');
-  const sql = `insert into ghl_appointments (id, created_by_user_id, date_added, start_time, status, calendar_id, location_id, deleted, title)
+  const values = rows.map(e => `(${esc(e.id)},${esc(e.created_by)},${esc(e.date_added)},${esc(e.start_time)},${esc(e.status)},${esc(e.calendar_id)},${esc(LOC)},${e.deleted ? 'true' : 'false'},${esc(e.title)},${esc(e.contact_id)})`).join(',');
+  const sql = `insert into ghl_appointments (id, created_by_user_id, date_added, start_time, status, calendar_id, location_id, deleted, title, contact_id)
     values ${values}
     on conflict (id) do update set created_by_user_id=excluded.created_by_user_id, date_added=excluded.date_added,
-      start_time=excluded.start_time, status=excluded.status, deleted=excluded.deleted, title=excluded.title, synced_at=now();`;
+      start_time=excluded.start_time, status=excluded.status, deleted=excluded.deleted, title=excluded.title,
+      contact_id=excluded.contact_id, synced_at=now();`;
   for (let attempt = 1; attempt <= 7; attempt++) {
     let r;
     try {
@@ -95,6 +96,7 @@ async function upsert(rows) {
           calendar_id: cal,
           deleted: !!e.deleted,
           title: e.title || null,
+          contact_id: e.contactId || null,
         });
         total++;
       }
