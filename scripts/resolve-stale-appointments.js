@@ -78,6 +78,16 @@ async function sql(query) {
       const ar = await fetch(`${GHL}/calendars/events/appointments/${c.id}`, { headers: H });
       if (!ar.ok) { errors++; continue; }
       const appt = (await ar.json()).appointment || {};
+
+      // Backfill pasivo del nombre del cliente (para la lista "Citas sin marcar" del dashboard)
+      if (appt.title) {
+        await fetch(`${SUPA_URL}/rest/v1/ghl_appointments?id=eq.${c.id}`, {
+          method: 'PATCH',
+          headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ title: appt.title }),
+        });
+      }
+
       const contactId = appt.contactId;
       if (!contactId) { skipped++; continue; }
 

@@ -590,6 +590,14 @@
           const p=(obp[ln]=obp[ln]||{name:disp,team:t,tot:outBlank(),loc:{orlando:outBlank(),kissimmee:outBlank()}});
           p.tot[st]+=n; if(p.loc[loc]) p.loc[loc][st]+=n; });
         window._outcomeByPerson=obp;
+        // ===== Citas sin marcar (cola operativa para el manager) — independiente del período mostrado =====
+        try{
+          const nowCut=new Date(Date.now()-4*3600000).toISOString();
+          const oldCut=new Date(Date.now()-100*86400000).toISOString();
+          const stR=await fetch(`${SUPA_URL}/rest/v1/ghl_appointments?select=id,created_by_user_id,calendar_id,start_time,title&deleted=eq.false&status=in.(confirmed,new)&start_time=lt.${encodeURIComponent(nowCut)}&start_time=gt.${encodeURIComponent(oldCut)}&order=start_time.asc&limit=500`,{headers:SUPA_HEADERS});
+          const stRows=await arrOf(stR);
+          window._staleAppts=stRows.map(x=>{ const nm=dispOf(x.created_by_user_id); return {id:x.id,team:teamOf(x.created_by_user_id),loc:CAL_LOC[x.calendar_id]||'otro',start_time:x.start_time,title:x.title,personLn:nm.toLowerCase(),personName:nm}; });
+        }catch(e){ window._staleAppts=window._staleAppts||[]; }
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
@@ -1718,6 +1726,60 @@
     function anSeg(cur,opts,fn){ return `<div style="display:inline-flex;background:var(--gray-100);border-radius:12px;padding:3px;gap:2px;">`+opts.map(o=>`<button onclick="${fn}('${o.v}')" style="padding:7px 14px;border:none;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;background:${cur===o.v?'white':'transparent'};color:${cur===o.v?'var(--primary)':'var(--gray-500)'};box-shadow:${cur===o.v?'0 1px 3px rgba(0,0,0,.12)':'none'};transition:all .15s;">${o.l}</button>`).join('')+`</div>`; }
     function anKpi(icon,label,val,suf,dl,color){ return `<div class="section-card" style="padding:14px 16px;flex:1;min-width:148px;"><div style="font-size:12px;color:var(--gray-500);font-weight:600;">${icon} ${label}</div><div style="font-size:29px;font-weight:800;color:${color||'var(--gray-900)'};line-height:1.12;margin-top:3px;">${val}<span style="font-size:14px;font-weight:600;color:var(--gray-400);">${suf||''}</span></div><div style="font-size:11px;font-weight:700;color:${dl.color};margin-top:2px;">${dl.txt} <span style="color:var(--gray-400);font-weight:500;">vs mes pasado</span></div></div>`; }
 
+    // ===== Citas sin marcar — cola operativa manager, interconectada con GHL =====
+    function anStaleGroups(){
+      const rows=window._staleAppts||[]; const agg={};
+      rows.forEach(r=>{ if(!anTeamMatch(r.team)||!anLocMatch(r.loc))return;
+        const key=r.personLn||'—'; const g=(agg[key]=agg[key]||{name:r.personName||'(sin nombre)',items:[]}); g.items.push(r); });
+      return Object.values(agg).sort((a,b)=>b.items.length-a.items.length);
+    }
+    function toggleStaleCard(){ window._anStaleOpen=!window._anStaleOpen; render(); }
+    function toggleStaleAgent(key){ window._anStaleOpenAgents=window._anStaleOpenAgents||new Set(); const s=window._anStaleOpenAgents; if(s.has(key))s.delete(key); else s.add(key); render(); }
+    async function anMarkAppt(id,status,btn){
+      if(btn){ btn.disabled=true; const sib=btn.parentElement.querySelectorAll('button'); sib.forEach(b=>b.disabled=true); btn.textContent='...'; }
+      try{
+        const r=await fetch(`${SUPA_URL}/functions/v1/mark-appointment`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({appointmentId:id,status})});
+        if(!r.ok){ alert('No se pudo marcar, intenta de nuevo.'); if(btn){btn.disabled=false;btn.textContent=status==='showed'?'Llegó':'No llegó';} return; }
+        window._staleAppts=(window._staleAppts||[]).filter(x=>x.id!==id);
+        await loadAppts();
+        render();
+      }catch(e){ alert('Error de conexión.'); }
+    }
+    function anStaleCard(){
+      if(!(window.me&&window.me.role==='manager')) return '';
+      const groups=anStaleGroups(); const total=groups.reduce((a,g)=>a+g.items.length,0);
+      const open=!!window._anStaleOpen; const openAgents=window._anStaleOpenAgents||new Set();
+      const badge=total>0?`<span style="background:#f59e0b;color:white;border-radius:10px;padding:2px 9px;font-size:12px;font-weight:800;">${total}</span>`:`<span style="background:#10b981;color:white;border-radius:10px;padding:2px 9px;font-size:12px;font-weight:800;">0 ✓</span>`;
+      let body='';
+      if(open){
+        body = groups.length ? groups.map(g=>{
+          const key=g.name.toLowerCase(); const isOpen=openAgents.has(key);
+          const items = isOpen ? g.items.map(it=>{
+            const d=new Date(it.start_time); const ds=`${d.getDate()}/${d.getMonth()+1}`;
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 4px 6px 28px;border-bottom:1px solid var(--gray-50);font-size:12px;flex-wrap:wrap;">
+              <span style="color:var(--gray-400);white-space:nowrap;">${ds}</span>
+              <span style="flex:1;min-width:80px;color:var(--gray-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml((it.title||'').trim()||'(sin nombre)')}</span>
+              <button onclick="event.stopPropagation();anMarkAppt('${it.id}','showed',this)" style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;border:1px solid #10b981;background:white;color:#10b981;cursor:pointer;">Llegó</button>
+              <button onclick="event.stopPropagation();anMarkAppt('${it.id}','noshow',this)" style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;border:1px solid #ef4444;background:white;color:#ef4444;cursor:pointer;">No llegó</button>
+            </div>`;
+          }).join('') : '';
+          return `<div>
+            <div class="clickable-row" onclick="toggleStaleAgent('${escapeAttr(key)}')" style="display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer;">
+              <span style="font-size:11px;color:var(--gray-400);width:12px;">${isOpen?'▾':'▸'}</span>
+              <span style="flex:1;font-weight:600;font-size:13px;">${escapeHtml(g.name)}</span>
+              <span style="font-weight:800;font-size:13px;color:#f59e0b;">${g.items.length}</span>
+            </div>${items}</div>`;
+        }).join('') : '<div class="empty" style="padding:10px 4px;">🎉 Todo marcado — 0 pendientes.</div>';
+      }
+      return `<div class="section-card" style="margin-bottom:14px;">
+        <div class="clickable-row" onclick="toggleStaleCard()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+          <div><div style="font-weight:800;font-size:14px;">🧹 Citas sin marcar</div><div style="font-size:11px;color:var(--gray-400);">${anTeamLabel()} · ${anLocLabel()} · vencidas sin resultado en el CRM</div></div>
+          <div style="display:flex;align-items:center;gap:8px;">${badge}<span style="color:var(--gray-400);">${open?'▾':'▸'}</span></div>
+        </div>
+        ${open?`<div style="margin-top:8px;border-top:1px solid var(--gray-100);">${body}</div>`:''}
+      </div>`;
+    }
+
     function renderAnalytics(s){
       const cur=(allReports||[]).filter(r=>inPeriod(r.date));
       const prevLbl=window._anPrevLabel||'';
@@ -1792,7 +1854,7 @@
       document.getElementById('main-content').innerHTML=
         `<div class="page-title">Análisis de producción</div>
          <div class="page-sub">${periodLabel()} · citas, visitas y show ratio por equipo y ubicación</div>
-         <div style="margin-top:14px;">`+filterBar+kpis+trendCard+showCard+noshowCard+topCard+`</div>`;
+         <div style="margin-top:14px;">`+filterBar+kpis+trendCard+showCard+anStaleCard()+noshowCard+topCard+`</div>`;
       anMountCombo('an-combo');
       anMountDonut('an-donut', show);
       anMountNoshow('an-noshow');
