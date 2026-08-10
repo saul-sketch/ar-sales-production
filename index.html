@@ -512,6 +512,31 @@
       }catch(e){window._dialerByAgent={};window._dialerOk=false;console.warn('dialer feed failed',e);}
     }
 
+    // Llamadas de HOY en vivo (independiente del rango de período elegido). La reconciliación
+    // diaria (ar_reconciliation_daily) corre 1 vez al día a las 8:30am y a propósito nunca
+    // incluye el día en curso — este fetch llena ese hueco en cada refresh, solo para hoy.
+    async function loadTodayCalls(){
+      try{
+        const t=todayISO();
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        if(!res.ok)throw new Error(res.status);
+        const data=await res.json();
+        const rosterById=window._rosterById||{};
+        const byUid={};(window._mapping||[]).forEach(m=>{byUid[m.dialer_user_id]=m.sales_report_name;});
+        const byName={};(window._mapping||[]).forEach(m=>{if(m.dialer_name)byName[m.dialer_name.toLowerCase()]=m.sales_report_name;});
+        const out={};
+        (data.agents||[]).forEach(a=>{
+          let nm = rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
+          if(!nm)return;
+          nm = canonName(nm);
+          const k=nm.toLowerCase();
+          if(!out[k])out[k]={calls:0};
+          out[k].calls+=a.calls||0;
+        });
+        window._liveTodayByAgent=out;
+      }catch(e){window._liveTodayByAgent={};console.warn('live today calls failed',e);}
+    }
+
     // Citas AGENDADAS por período, contadas por quien las creó (createdBy) desde ghl_appointments.
     // Fuente correcta: el dialer contaba por "asignado" (closer o nadie) y daba 0 a los setters.
     async function loadAppts(){
@@ -655,7 +680,7 @@
         }
         // "Reporte de hoy" button only for setters/closers (the ones who fill KPIs)
         const rbtn=document.getElementById('report-btn');if(rbtn)rbtn.style.display=(me.role==='closer'||me.role==='setter')?'':'none';
-        await Promise.all([loadDialer(),loadAppts()]); // dialer feed + citas por agendador
+        await Promise.all([loadDialer(),loadAppts(),loadTodayCalls()]); // dialer feed + citas por agendador + llamadas de hoy en vivo
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
       }catch(e){document.getElementById('main-content').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}
@@ -2170,6 +2195,17 @@
         p.calls+=bas.calls||0;p.appts+=bas.total||0;
         tot.calls+=bas.calls||0;tot.appts+=bas.total||0;
       });
+      // Llamadas de HOY, en vivo — la reconciliación diaria nunca incluye el día en curso
+      // (corre 1 vez a las 8:30am y solo procesa "ayer para atrás"), así que este hueco se
+      // llena aparte en cada refresh para que hoy no se vea en cero hasta mañana.
+      const todayStr=todayISO();
+      if(inPeriod(todayStr)){
+        const liveToday=(window._liveTodayByAgent||{})[ln2];
+        if(liveToday&&liveToday.calls){
+          const k=periodKey(todayStr);const p=eP(k);
+          p.calls+=liveToday.calls; tot.calls+=liveToday.calls;
+        }
+      }
       // Citas por día agendadas por esta persona (createdBy) desde ghl_appointments
       const _daily=(window._apptsDailyByName||{})[ln2]||{};
       Object.keys(_daily).forEach(day=>{ if(!inPeriod(day))return; const k=periodKey(day); const p=eP(k); p.appts+=_daily[day]; tot.appts+=_daily[day]; });
