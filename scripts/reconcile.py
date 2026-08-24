@@ -78,12 +78,18 @@ def load_mapping():
     # Última pasada: el MISMO alias que usa el tablero (crm_name_alias), para que la llave
     # que escribimos aquí sea idéntica a la que él busca. Sin esto, alguien guardado como
     # "Carlos B" queda invisible porque el tablero lo muestra como "Carlos Brito".
+    # Nombre canónico. crm_name_alias trae el ID de la persona, así que la unión correcta
+    # es por ID y no por texto: aguanta que en el CRM le cambien la escritura sin que se
+    # parta en dos filas ("Isiley M" en el CRM vs "Isiley" en la tabla vieja = misma
+    # persona, 12.577 llamadas que salían repartidas en dos nombres distintos).
     try:
-        ALIAS = {a["alias"]: a["canonical_name"]
-                 for a in http_get(f"{SUPA}/rest/v1/crm_name_alias?select=alias,canonical_name", hdr)
+        rows = http_get(f"{SUPA}/rest/v1/crm_name_alias?select=alias,canonical_name,crm_user_id", hdr)
+        ALIAS = {a["alias"]: a["canonical_name"] for a in rows
                  if a.get("alias") and a.get("canonical_name")}
+        por_id = {a["crm_user_id"]: a["canonical_name"] for a in rows
+                  if a.get("crm_user_id") and a.get("canonical_name")}
         for uid, nm in list(out.items()):
-            out[uid] = canon(nm)
+            out[uid] = por_id.get(uid) or canon(nm)
     except Exception as e:
         print(f"  aviso: no se pudo leer crm_name_alias ({str(e)[:40]})")
     return out

@@ -500,7 +500,7 @@
         const out={}; // nombre canónico(lower) → {calls, contacts, minutes, sms, appointments}
         dialerAgents.forEach(a=>{
           // Fuente principal = ID del CRM (cubre a TODOS los del dialer). Fallbacks: tablita vieja, luego el nombre del dialer.
-          let nm = rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
+          let nm = (window._canonByUid||{})[a.agentUserId] || rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
           if(!nm)return;
           nm = canonName(nm);
           const k=nm.toLowerCase();
@@ -511,6 +511,24 @@
         window._dialerOk=true;
       }catch(e){window._dialerLive={};window._dialerOk=false;console.warn('dialer feed failed',e);}
       rebuildPeriodDialer();
+    }
+
+    // El histórico se fue guardando con la escritura que existía cada día, y esa escritura
+    // cambió con el tiempo ("Fabiola" en mayo, "Fabiola Iorio" después). Al cargarlo pasamos
+    // cada llave a su nombre canónico y sumamos las repetidas: si no, la misma persona sale
+    // dos veces en el listado y sus números quedan partidos entre las dos filas.
+    function normalizarRecon(rows){
+      (rows||[]).forEach(r=>{
+        const bas=r&&r.detail&&r.detail.by_agent_status; if(!bas)return;
+        const out={};
+        Object.entries(bas).forEach(([k,v])=>{
+          const ck = k.indexOf('uid:')===0 ? k : canonName(k).toLowerCase();
+          const d = out[ck] || (out[ck]={});
+          Object.entries(v||{}).forEach(([f,n])=>{ d[f]=(d[f]||0)+(Number(n)||0); });
+        });
+        r.detail.by_agent_status=out;
+      });
+      return rows;
     }
 
     // Llamadas del período — salen del HISTÓRICO guardado (permanente, día por día) más las
@@ -552,7 +570,7 @@
         const byName={};(window._mapping||[]).forEach(m=>{if(m.dialer_name)byName[m.dialer_name.toLowerCase()]=m.sales_report_name;});
         const out={};
         (data.agents||[]).forEach(a=>{
-          let nm = rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
+          let nm = (window._canonByUid||{})[a.agentUserId] || rosterById[a.agentUserId] || byUid[a.agentUserId] || (a.agentName?byName[a.agentName.toLowerCase()]:null) || a.agentName;
           if(!nm)return;
           nm = canonName(nm);
           const k=nm.toLowerCase();
@@ -714,11 +732,14 @@
         // Fallback ar_agents para nombres viejos que aún no matchean el CRM (se irá limpiando solo con la unificación).
         agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(window._agentTeam[ln])return;if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
         // Mapa de equivalencias de nombres (evita duplicados: "Fabiola"/"Fabiola Lorio" → "Fabiola Iorio").
-        window._alias={};
+        window._alias={}; window._canonByUid={};
         try{
-          const ar=await fetch(`${SUPA_URL}/rest/v1/crm_name_alias?select=alias,canonical_name,team`,{headers:SUPA_HEADERS});
+          const ar=await fetch(`${SUPA_URL}/rest/v1/crm_name_alias?select=alias,canonical_name,team,crm_user_id`,{headers:SUPA_HEADERS});
           (await ar.json()||[]).forEach(a=>{
             window._alias[a.alias]={canon:a.canonical_name,team:a.team};
+            // Unión por ID de la persona: es más fiable que por texto y aguanta que en el
+            // CRM le cambien la escritura del nombre sin partirla en dos filas.
+            if(a.crm_user_id&&a.canonical_name)window._canonByUid[a.crm_user_id]=a.canonical_name;
             // el nombre canónico también con su escritura correcta: si no, alguien que en el
             // CRM está como "Carlos B" se mostraba en minúsculas ("carlos brito").
             const cl=(a.canonical_name||'').toLowerCase();
@@ -726,6 +747,7 @@
             if(cl&&a.team&&!window._agentTeam[cl]){const mm={'call-center':'cc','closers-orlando':'orlando','closers-kissimmee':'kissimmee'};if(mm[a.team])window._agentTeam[cl]=mm[a.team];}
           });
         }catch(e){}
+        normalizarRecon(window._recon);
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();
           me.role=window._closerSet.has(ln)?'closer':window._setterSet.has(ln)?'setter':'agent';
