@@ -159,7 +159,66 @@ def sr_visits(day):
             if ph: out[ph] = {"name": v.get("name"), "closer": v.get("closer"), "sale": v.get("sale")}
     return out
 
-def upsert(row):
+# Campos del LEDGER del marcador: solo existen ~35 días y luego desaparecen de la fuente.
+# Una vez cerrado el día, el dato guardado manda: no se pisa con un cero.
+LEDGER_FIELDS = ("calls", "contacts", "minutes", "sms")
+# Campos del CALENDARIO: sí cambian después (una cita "confirmada" pasa a "showed" o
+# "noshow" días más tarde). Estos SÍ se sobrescriben — es la fuente viva.
+CAL_FIELDS = STATUSES + ("other", "total")
+
+def leer_dia(day):
+    """Lo que ya quedó cerrado de ese día (None si nunca se cerró)."""
+    url = f"{SUPA}/rest/v1/ar_reconciliation_daily?select=*&recon_date=eq.{day}"
+    rows = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}"})
+    return rows[0] if rows else None
+
+def fusionar_agentes(viejo, nuevo):
+    """El cierre nunca se pierde.
+
+    - Persona que ya no viene en la fuente → se queda tal cual quedó cerrada.
+    - Campos del calendario → se sobrescriben siempre (pueden cambiar después).
+    - Campos del marcador → solo se pisan si traen dato. Si la fuente ya los olvidó
+      (pasaron los ~35 días), se conserva lo que se cerró ese día.
+    """
+    out = {k: dict(v) for k, v in (viejo or {}).items()}
+    for k, nv in (nuevo or {}).items():
+        ov = out.get(k)
+        if not ov:
+            out[k] = dict(nv)
+            continue
+        for f in CAL_FIELDS:
+            if f in nv: ov[f] = nv[f]
+        for f in LEDGER_FIELDS:
+            n = nv.get(f) or 0
+            if n: ov[f] = n
+            else: ov.setdefault(f, 0)
+        out[k] = ov
+    return out
+
+def upsert(row, previo=None):
+    """Escribe el cierre del día SIN destruir lo ya guardado.
+
+    Antes esto reemplazaba la fila entera: volver a correr un día viejo borraba sus
+    llamadas, porque el marcador ya no las tiene. Ahora se fusiona, así el cierre de
+    cualquier día se puede volver a correr en cualquier momento sin riesgo."""
+    if previo:
+        pd = previo.get("detail") or {}
+        nd = row.get("detail") or {}
+        nd["by_agent_status"] = fusionar_agentes(pd.get("by_agent_status"),
+                                                 nd.get("by_agent_status"))
+        # Si la nueva pasada no encontró NADA y antes sí había, no se pisa: se conserva.
+        for campo in ("calendar_only", "report_only"):
+            if not nd.get(campo) and pd.get(campo): nd[campo] = pd[campo]
+        if not row.get("showed_count") and previo.get("showed_count"):
+            for c in ("showed_count", "matched", "calendar_only", "report_only", "match_rate"):
+                row[c] = previo.get(c, row.get(c))
+        cierre = pd.get("_cierre") or {}
+        nd["_cierre"] = {"cerrado": cierre.get("cerrado") or nowstamp(), "actualizado": nowstamp()}
+        row["detail"] = nd
+    else:
+        d = row.get("detail") or {}
+        d["_cierre"] = {"cerrado": nowstamp(), "actualizado": nowstamp()}
+        row["detail"] = d
     body = json.dumps([row]).encode()
     req = urllib.request.Request(
         f"{SUPA}/rest/v1/ar_reconciliation_daily?on_conflict=recon_date",
@@ -168,6 +227,9 @@ def upsert(row):
                  "Content-Type": "application/json",
                  "Prefer": "resolution=merge-duplicates,return=minimal"})
     urllib.request.urlopen(req, timeout=30).read()
+
+def nowstamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
 def main():
     days_back = int(sys.argv[1]) if len(sys.argv)>1 else 14
@@ -205,7 +267,8 @@ def main():
             }
             upsert({"recon_date": day, "showed_count": len(cal), "reported_count": len(sr),
                     "matched": len(matched), "calendar_only": len(cal_only),
-                    "report_only": len(rep_only), "match_rate": mr, "detail": detail})
+                    "report_only": len(rep_only), "match_rate": mr, "detail": detail},
+                   previo=leer_dia(day))
             print(f"  {day} {len(cal):>6} {len(sr):>6} {len(matched):>5} {len(cal_only):>7} {len(rep_only):>7} {mr:>5}%")
         except Exception as e:
             print(f"  {day}  ERROR: {str(e)[:60]}")

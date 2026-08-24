@@ -522,7 +522,15 @@
         const bas=r&&r.detail&&r.detail.by_agent_status; if(!bas)return;
         const out={};
         Object.entries(bas).forEach(([k,v])=>{
-          const ck = k.indexOf('uid:')===0 ? k : canonName(k).toLowerCase();
+          // Balde sin nombre: si hoy ya sabemos de quién es ese ID, se le devuelve su
+          // nombre en vez de perderlo. Si nadie lo reconoce, se queda como está.
+          let kk=k;
+          if(k.indexOf('uid:')===0){
+            const id=k.slice(4);
+            const nm=(window._canonByUid||{})[id]||(window._rosterById||{})[id];
+            if(nm)kk=nm;
+          }
+          const ck = kk.indexOf('uid:')===0 ? kk : canonName(kk).toLowerCase();
           const d = out[ck] || (out[ck]={});
           Object.entries(v||{}).forEach(([f,n])=>{ d[f]=(d[f]||0)+(Number(n)||0); });
         });
