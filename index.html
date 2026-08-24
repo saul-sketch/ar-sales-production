@@ -645,7 +645,7 @@
         window._agentNames={};agents.forEach(a=>{if(a.name)window._agentNames[a.name.toLowerCase()]=a.name;});
         window._mapping=await mRes.json();
         window._selfReports=await srRes.json();
-        try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=30`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
+        try{const recRes=await fetch(`${SUPA_URL}/rest/v1/ar_reconciliation_daily?select=*&order=recon_date.desc&limit=400`,{headers:SUPA_HEADERS});window._recon=await recRes.json();}catch(e){window._recon=[];}
         window._closerSet=new Set(agents.filter(a=>a.role==='closer').map(a=>a.name.toLowerCase()));
         window._setterSet=new Set(agents.filter(a=>a.role==='setter').map(a=>a.name.toLowerCase()));
         // Equipo AUTORITATIVO desde crm_roster (etiquetas reales del WaveDialer, refrescadas solas):

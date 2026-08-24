@@ -40,11 +40,33 @@ def http_get(url, headers):
 STATUSES = ("showed", "noshow", "cancelled", "confirmed", "new", "invalid")
 
 def load_mapping():
-    """dialer_user_id (GHL assignedUserId) → sales_report_name, from Supabase."""
-    url = f"{SUPA}/rest/v1/ar_agent_mapping?select=dialer_user_id,sales_report_name"
-    data = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}"})
-    return {m["dialer_user_id"]: m["sales_report_name"]
-            for m in data if m.get("dialer_user_id") and m.get("sales_report_name")}
+    """GHL user id → display name.
+
+    Two sources, in this order:
+      1. ar_agent_mapping  — la tabla manual. Manda, para no romper el histórico de
+         quien ya tiene un nombre distinto al del CRM (p.ej. "Fabiola" vs "Fabiola Lorio").
+      2. crm_roster        — TODA la gente del CRM, con su crm_user_id. Es el auto-alta:
+         cualquiera que empiece a marcar aparece desde el primer día sin que nadie
+         registre nada a mano. Sin esto, cada persona nueva caía en un balde "uid:<id>"
+         y sus llamadas no se le acreditaban a nadie.
+
+    El tablero resuelve nombres exactamente en este mismo orden, así que las llaves
+    que escribimos aquí coinciden con las que él busca."""
+    hdr = {"apikey": ANON, "Authorization": f"Bearer {ANON}"}
+    out = {}
+    # 2 primero para que 1 lo pise (la tabla manual gana)
+    try:
+        roster = http_get(f"{SUPA}/rest/v1/crm_roster?select=crm_user_id,name", hdr)
+        for r in roster:
+            if r.get("crm_user_id") and r.get("name"):
+                out[r["crm_user_id"]] = r["name"]
+    except Exception as e:
+        print(f"  aviso: no se pudo leer crm_roster ({str(e)[:40]}) — solo mapeo manual")
+    manual = http_get(f"{SUPA}/rest/v1/ar_agent_mapping?select=dialer_user_id,sales_report_name", hdr)
+    for m in manual:
+        if m.get("dialer_user_id") and m.get("sales_report_name"):
+            out[m["dialer_user_id"]] = m["sales_report_name"]
+    return out
 
 def cal_appts(day):
     """All calendar events happening on `day` (raw) — one fetch, reused for both
@@ -120,7 +142,7 @@ def main():
     try: today = datetime.date.today()
     except Exception: pass
     uid2name = load_mapping()
-    print(f"Reconciliando {days_back} días (ayer → atrás) · {len(uid2name)} agentes mapeados\n")
+    print(f"Reconciliando {days_back} días (ayer → atrás) · {len(uid2name)} personas reconocidas\n")
     print(f"{'Fecha':12s} {'Showed':>6s} {'Report':>6s} {'Match':>5s} {'CalSolo':>7s} {'RepSolo':>7s} {'Match%':>6s}")
     for i in range(1, days_back+1):
         day = (today - datetime.timedelta(days=i)).isoformat()
