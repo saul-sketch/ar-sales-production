@@ -707,6 +707,9 @@
             if(p.team&&map[p.team])window._agentTeam[ln]=map[p.team];
           });
           window._crmActive=new Set((roster||[]).filter(p=>p.active).map(p=>(p.name||'').toLowerCase()));
+          // Escritura correcta también para los nombres que solo viven en la tabla manual:
+          // sin esto salían en minúsculas ("andres veliz" en vez de "Andres Veliz").
+          (window._mapping||[]).forEach(m=>{const n=m.sales_report_name;if(!n)return;const l=n.toLowerCase();if(!window._nameCase[l])window._nameCase[l]=n;});
         }catch(e){}
         // Fallback ar_agents para nombres viejos que aún no matchean el CRM (se irá limpiando solo con la unificación).
         agents.forEach(a=>{const ln=(a.name||'').toLowerCase();if(window._agentTeam[ln])return;if(a.role==='setter')window._agentTeam[ln]='cc';else if(a.role==='closer')window._agentTeam[ln]=(a.location==='Kissimmee')?'kissimmee':'orlando';});
