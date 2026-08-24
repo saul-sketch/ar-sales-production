@@ -66,6 +66,18 @@ def load_mapping():
     for m in manual:
         if m.get("dialer_user_id") and m.get("sales_report_name"):
             out[m["dialer_user_id"]] = m["sales_report_name"]
+    # Última pasada: el MISMO alias que usa el tablero (crm_name_alias), para que la llave
+    # que escribimos aquí sea idéntica a la que él busca. Sin esto, alguien guardado como
+    # "Carlos B" queda invisible porque el tablero lo muestra como "Carlos Brito".
+    try:
+        alias = {a["alias"]: a["canonical_name"]
+                 for a in http_get(f"{SUPA}/rest/v1/crm_name_alias?select=alias,canonical_name", hdr)
+                 if a.get("alias") and a.get("canonical_name")}
+        for uid, nm in list(out.items()):
+            c = alias.get(nm.lower().strip())
+            if c: out[uid] = c
+    except Exception as e:
+        print(f"  aviso: no se pudo leer crm_name_alias ({str(e)[:40]})")
     return out
 
 def cal_appts(day):
