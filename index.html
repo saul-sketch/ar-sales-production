@@ -624,15 +624,32 @@
       }catch(e){ window._apptsByName=window._apptsByName||{}; window._apptsOk=false; console.warn('appts feed failed',e); }
     }
 
+    // Supabase corta TODA consulta en 1.000 filas y el `limit` no lo salta. Los reportes
+    // diarios ya pasaron ese techo (1.171), así que sin paginar se perdían en silencio los
+    // más viejos — y ese corte avanza solo: cada reporte nuevo empuja a uno viejo fuera.
+    // Esto pide de a 1.000 con Range hasta traerlos todos.
+    async function fetchAll(path){
+      const out=[]; const paso=1000;
+      for(let desde=0; ; desde+=paso){
+        const r=await fetch(`${SUPA_URL}/rest/v1/${path}`,
+          {headers:{...SUPA_HEADERS,'Range-Unit':'items','Range':`${desde}-${desde+paso-1}`}});
+        if(!r.ok) throw new Error(r.status);
+        const lote=await r.json();
+        out.push(...lote);
+        if(lote.length<paso) return out;
+        if(desde>50000) return out; // tope de seguridad
+      }
+    }
+
     async function refresh(){
       try{
-        const [rRes,aRes,mRes,srRes]=await Promise.all([
-          fetch(`${SUPA_URL}/rest/v1/ar_daily_reports?select=date,location,visits&order=date.desc`,{headers:SUPA_HEADERS}),
+        const [reports,aRes,mRes,srRes]=await Promise.all([
+          fetchAll('ar_daily_reports?select=date,location,visits&order=date.desc'),
           fetch(`${SUPA_URL}/rest/v1/ar_agents?select=name,role,location&order=name.asc`,{headers:SUPA_HEADERS}),
           fetch(`${SUPA_URL}/rest/v1/ar_agent_mapping?select=dialer_user_id,dialer_name,sales_report_name`,{headers:SUPA_HEADERS}),
           fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?select=*`,{headers:SUPA_HEADERS})
         ]);
-        allReports=await rRes.json();
+        allReports=reports;
         const agents=await aRes.json();
         window._agents=agents;
         // First load: if THIS month has no activity yet (e.g. day 1), show the latest month WITH data
