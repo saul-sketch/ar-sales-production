@@ -507,9 +507,35 @@
           if(!out[k])out[k]={calls:0,contacts:0,minutes:0,sms:0,appointments:0};
           out[k].calls+=a.calls||0;out[k].contacts+=a.contacts||0;out[k].minutes+=a.minutes||0;out[k].sms+=a.sms||0;out[k].appointments+=a.appointments||0;
         });
-        window._dialerByAgent=out;
+        window._dialerLive=out;
         window._dialerOk=true;
-      }catch(e){window._dialerByAgent={};window._dialerOk=false;console.warn('dialer feed failed',e);}
+      }catch(e){window._dialerLive={};window._dialerOk=false;console.warn('dialer feed failed',e);}
+      rebuildPeriodDialer();
+    }
+
+    // Llamadas del período — salen del HISTÓRICO guardado (permanente, día por día) más las
+    // de hoy en vivo. El marcador solo conserva ~35 días: tomarlas de ahí dejaba en cero
+    // cualquier mes anterior (mayo mostraba 0 teniendo 134.512 guardadas) y borraba del
+    // listado a quien ya salió del equipo, aunque sus KPIs sí cuenten para ese mes.
+    // El marcador se usa solo para quien el histórico no tenga nada en el período.
+    function rebuildPeriodDialer(){
+      const out={};
+      const add=(k,d)=>{const o=out[k]||(out[k]={calls:0,contacts:0,minutes:0,sms:0,appointments:0});
+        o.calls+=d.calls||0;o.contacts+=d.contacts||0;o.minutes+=d.minutes||0;o.sms+=d.sms||0;};
+      (window._recon||[]).forEach(r=>{
+        if(!inPeriod(r.recon_date))return;
+        Object.entries((r.detail||{}).by_agent_status||{}).forEach(([k,v])=>{
+          if(k.startsWith('uid:'))return;
+          if((v.calls||0)||(v.contacts||0)||(v.minutes||0)||(v.sms||0))add(k,v);
+        });
+      });
+      const t=todayISO();
+      if(inPeriod(t))Object.entries(window._liveTodayByAgent||{}).forEach(([k,v])=>add(k,v));
+      const live=window._dialerLive||{};
+      Object.entries(live).forEach(([k,v])=>{ if(!out[k])add(k,v); });
+      // Las citas del marcador solo existen en el feed en vivo (el histórico no las guarda).
+      Object.entries(live).forEach(([k,v])=>{ if(out[k])out[k].appointments=v.appointments||0; });
+      window._dialerByAgent=out;
     }
 
     // Llamadas de HOY en vivo (independiente del rango de período elegido). La reconciliación
@@ -530,11 +556,12 @@
           if(!nm)return;
           nm = canonName(nm);
           const k=nm.toLowerCase();
-          if(!out[k])out[k]={calls:0};
-          out[k].calls+=a.calls||0;
+          if(!out[k])out[k]={calls:0,contacts:0,minutes:0,sms:0};
+          out[k].calls+=a.calls||0;out[k].contacts+=a.contacts||0;out[k].minutes+=a.minutes||0;out[k].sms+=a.sms||0;
         });
         window._liveTodayByAgent=out;
       }catch(e){window._liveTodayByAgent={};console.warn('live today calls failed',e);}
+      rebuildPeriodDialer();
     }
 
     // Citas AGENDADAS por período, contadas por quien las creó (createdBy) desde ghl_appointments.
@@ -705,6 +732,7 @@
         // "Reporte de hoy" button only for setters/closers (the ones who fill KPIs)
         const rbtn=document.getElementById('report-btn');if(rbtn)rbtn.style.display=(me.role==='closer'||me.role==='setter')?'':'none';
         await Promise.all([loadDialer(),loadAppts(),loadTodayCalls()]); // dialer feed + citas por agendador + llamadas de hoy en vivo
+        rebuildPeriodDialer(); // con el histórico y las de hoy ya cargados
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
       }catch(e){document.getElementById('main-content').innerHTML=`<div class="section-card"><div class="empty">Error: ${e.message}</div></div>`;}

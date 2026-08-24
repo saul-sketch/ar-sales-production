@@ -95,9 +95,11 @@ def cal_appts(day):
     return http_get(url, {"X-Service-Token": SERVICE_TOKEN}).get("appointments", [])
 
 def calls_by_agent(day, uid2name):
-    """sales_report_name(lower) → dials that day, from the dialer ledger (/agents).
-    Lets the per-week history show LLAM. per agent (ledger keeps ~35 days; the daily
-    cron captures yesterday each run, so history accumulates permanently in Supabase)."""
+    """nombre(lower) → {calls, contacts, minutes, sms} de ese día, del ledger del marcador.
+
+    El ledger solo conserva ~35 días. Este cron corre a diario y guarda lo de AYER, así
+    que el histórico en Supabase es lo único permanente — el tablero lee de aquí para
+    cualquier período pasado, no del marcador."""
     url = f"{BRIDGE}/agents?from={day}&to={day}&tz=-300"
     data = http_get(url, {"X-Service-Token": SERVICE_TOKEN})
     out = {}
@@ -107,7 +109,12 @@ def calls_by_agent(day, uid2name):
         # (igual que el tablero). Solo si tampoco hay nombre cae al balde uid:<id>.
         name = uid2name.get(uid) or canon(a.get("agentName"))
         key = name.lower() if name else (f"uid:{uid}" if uid else None)
-        if key: out[key] = out.get(key, 0) + (a.get("calls") or 0)
+        if not key: continue
+        d = out.setdefault(key, {"calls": 0, "contacts": 0, "minutes": 0, "sms": 0})
+        d["calls"]    += a.get("calls") or 0
+        d["contacts"] += a.get("contacts") or 0
+        d["minutes"]  += a.get("minutes") or 0
+        d["sms"]      += a.get("sms") or 0
     return out
 
 def showed_by_phone(appts):
@@ -173,11 +180,12 @@ def main():
             cal = showed_by_phone(appts)
             by_agent = status_by_agent(appts, uid2name)
             # merge per-agent dials (so the weekly/daily history can show LLAM.)
-            for key, c in calls_by_agent(day, uid2name).items():
+            for key, m in calls_by_agent(day, uid2name).items():
                 d = by_agent.setdefault(key, {s: 0 for s in STATUSES} | {"other": 0, "total": 0})
-                d["calls"] = c
+                d.update(m)
             for d in by_agent.values():
-                d.setdefault("calls", 0)
+                for f in ("calls", "contacts", "minutes", "sms"):
+                    d.setdefault(f, 0)
             sr = sr_visits(day)
             cset, sset = set(cal), set(sr)
             matched = cset & sset
