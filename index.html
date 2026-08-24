@@ -687,7 +687,14 @@
         window._alias={};
         try{
           const ar=await fetch(`${SUPA_URL}/rest/v1/crm_name_alias?select=alias,canonical_name,team`,{headers:SUPA_HEADERS});
-          (await ar.json()||[]).forEach(a=>{window._alias[a.alias]={canon:a.canonical_name,team:a.team};});
+          (await ar.json()||[]).forEach(a=>{
+            window._alias[a.alias]={canon:a.canonical_name,team:a.team};
+            // el nombre canónico también con su escritura correcta: si no, alguien que en el
+            // CRM está como "Carlos B" se mostraba en minúsculas ("carlos brito").
+            const cl=(a.canonical_name||'').toLowerCase();
+            if(cl&&!window._nameCase[cl])window._nameCase[cl]=a.canonical_name;
+            if(cl&&a.team&&!window._agentTeam[cl]){const mm={'call-center':'cc','closers-orlando':'orlando','closers-kissimmee':'kissimmee'};if(mm[a.team])window._agentTeam[cl]=mm[a.team];}
+          });
         }catch(e){}
         if(me.role!=='manager'){
           const ln=me.name.toLowerCase();

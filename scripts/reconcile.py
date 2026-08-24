@@ -39,6 +39,11 @@ def http_get(url, headers):
 
 STATUSES = ("showed", "noshow", "cancelled", "confirmed", "new", "invalid")
 
+ALIAS = {}
+def canon(name):
+    """Mismo nombre canónico que muestra el tablero (crm_name_alias)."""
+    return ALIAS.get(str(name or "").lower().strip(), name)
+
 def load_mapping():
     """GHL user id → display name.
 
@@ -52,9 +57,17 @@ def load_mapping():
 
     El tablero resuelve nombres exactamente en este mismo orden, así que las llaves
     que escribimos aquí coinciden con las que él busca."""
+    global ALIAS
     hdr = {"apikey": ANON, "Authorization": f"Bearer {ANON}"}
     out = {}
-    # 2 primero para que 1 lo pise (la tabla manual gana)
+    # La tabla manual primero, para que crm_roster la PISE — el tablero resuelve en ese
+    # mismo orden (roster antes que manual). Si aquí lo hiciéramos al revés, quien tenga
+    # dos nombres distintos queda con la llave cambiada y sus llamadas no se ven: pasaba
+    # con "Isiley M" en el CRM vs "Isiley" en la tabla manual (2.676 llamadas perdidas).
+    manual = http_get(f"{SUPA}/rest/v1/ar_agent_mapping?select=dialer_user_id,sales_report_name", hdr)
+    for m in manual:
+        if m.get("dialer_user_id") and m.get("sales_report_name"):
+            out[m["dialer_user_id"]] = m["sales_report_name"]
     try:
         roster = http_get(f"{SUPA}/rest/v1/crm_roster?select=crm_user_id,name", hdr)
         for r in roster:
@@ -62,20 +75,15 @@ def load_mapping():
                 out[r["crm_user_id"]] = r["name"]
     except Exception as e:
         print(f"  aviso: no se pudo leer crm_roster ({str(e)[:40]}) — solo mapeo manual")
-    manual = http_get(f"{SUPA}/rest/v1/ar_agent_mapping?select=dialer_user_id,sales_report_name", hdr)
-    for m in manual:
-        if m.get("dialer_user_id") and m.get("sales_report_name"):
-            out[m["dialer_user_id"]] = m["sales_report_name"]
     # Última pasada: el MISMO alias que usa el tablero (crm_name_alias), para que la llave
     # que escribimos aquí sea idéntica a la que él busca. Sin esto, alguien guardado como
     # "Carlos B" queda invisible porque el tablero lo muestra como "Carlos Brito".
     try:
-        alias = {a["alias"]: a["canonical_name"]
+        ALIAS = {a["alias"]: a["canonical_name"]
                  for a in http_get(f"{SUPA}/rest/v1/crm_name_alias?select=alias,canonical_name", hdr)
                  if a.get("alias") and a.get("canonical_name")}
         for uid, nm in list(out.items()):
-            c = alias.get(nm.lower().strip())
-            if c: out[uid] = c
+            out[uid] = canon(nm)
     except Exception as e:
         print(f"  aviso: no se pudo leer crm_name_alias ({str(e)[:40]})")
     return out
@@ -95,7 +103,9 @@ def calls_by_agent(day, uid2name):
     out = {}
     for a in data.get("agents", []):
         uid = a.get("agentUserId")
-        name = uid2name.get(uid)
+        # roster/manual → si el uid no está en ninguna, el nombre que da el propio marcador
+        # (igual que el tablero). Solo si tampoco hay nombre cae al balde uid:<id>.
+        name = uid2name.get(uid) or canon(a.get("agentName"))
         key = name.lower() if name else (f"uid:{uid}" if uid else None)
         if key: out[key] = out.get(key, 0) + (a.get("calls") or 0)
     return out
