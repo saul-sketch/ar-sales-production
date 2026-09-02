@@ -327,7 +327,7 @@
     }
     async function setPeriod(p){
       if(!periodAllowed(p)){ alert('Tu acceso es solo del mes actual. Pídele a Saúl permiso de históricos.'); return; }
-      filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await Promise.all([loadDialer(),loadAppts()]);if(mc)mc.style.opacity='';render();}
+      filterPeriod=p;dtAgg=aggForPeriod();renderSidebar();renderPeriodBar();const mc=document.getElementById('main-content');if(mc)mc.style.opacity='.45';await Promise.all([loadDialer(),loadAppts(),cargarApps()]);if(mc)mc.style.opacity='';render();}
     function setLoc(l){filterLoc=l;render();}
     function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebar-backdrop').classList.toggle('show');}
     function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebar-backdrop').classList.remove('show');}
@@ -764,7 +764,7 @@
         }
         // "Reporte de hoy" button only for setters/closers (the ones who fill KPIs)
         const rbtn=document.getElementById('report-btn');if(rbtn)rbtn.style.display=(me.role==='closer'||me.role==='setter')?'':'none';
-        await Promise.all([loadDialer(),loadAppts(),loadTodayCalls()]); // dialer feed + citas por agendador + llamadas de hoy en vivo
+        await Promise.all([loadDialer(),loadAppts(),loadTodayCalls(),cargarApps()]); // dialer feed + citas por agendador + llamadas de hoy en vivo + aplicaciones online
         rebuildPeriodDialer(); // con el histórico y las de hoy ya cargados
         document.getElementById('last-refresh').textContent='Actualizado '+new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+(window._dialerOk?' · dialer en vivo ✓':' · dialer offline');
         render();
@@ -1139,6 +1139,37 @@
     function prodOrigin(v){ if(v.scheduled_by==='Self-gen'||v.subgen===true)return 'Propio'; if(v.scheduled_by==='Call Center')return 'Call Center'; if(v.scheduled_by==='Walk-in')return 'Walk-in'; return 'Otro'; }
     // Peso _w por registro: venta en pareja (2 closers) = 0.5 a cada uno. Sin _w = 1 (retrocompatible).
     // vend cuenta TODAS las ventas (aunque se cancelen); cancel = las que luego se cancelaron.
+    /* Aplicaciones online por persona. Vienen de la otra app (ar-app), donde cada
+       asesor llena la forma. Se cuentan por quien la hizo y por el día en que la hizo,
+       para que el número siga al período que esté elegido arriba. */
+    window._appsPorPersona = null;
+    async function cargarApps(){
+      try{
+        const r = await fetch(`${SUPA_URL}/rest/v1/rpc/ar_oa_resumen`,
+          { method:'POST', headers:{...SUPA_HEADERS,'Content-Type':'application/json'}, body:'{}' });
+        const d = await r.json();
+        window._appsPorPersona = Array.isArray(d) ? d : null;
+      }catch(e){ window._appsPorPersona = null; }
+    }
+    /* Cuántas hizo cada quien dentro del período y la locación elegidos.
+       La clave es el nombre ya normalizado, igual que el resto del tablero, para que
+       "melany serfaty" y "Melany Serfaty" caigan en la misma persona. */
+    function appsDelPeriodo(){
+      const d = window._appsPorPersona;
+      if (!d) return {};
+      const {from,to} = periodRange();
+      const m = {};
+      d.forEach(a => {
+        const dia = String(a.dia||'');
+        if (dia < from || dia > to) return;
+        if (filterLoc !== 'all' && String(a.tienda||'').toLowerCase() !== String(filterLoc).toLowerCase()) return;
+        const k = canonName(clean(a.vendedor)).toLowerCase();
+        if (!k) return;
+        m[k] = (m[k]||0) + 1;
+      });
+      return m;
+    }
+
     function prodAgg(recs){ const a={visitas:0,aplico:0,noap:0,aprob:0,neg:0,vend:0,cancel:0,monto:0};
       recs.forEach(v=>{ const w=v._w||1; a.visitas+=w; if(v.applied===true)a.aplico+=w; else a.noap+=w; if(v.result==='approved')a.aprob+=w; if(v.result==='denied')a.neg+=w; if(v.sale===true){a.vend+=w;a.monto+=(v.net_profit||0)*w;if(v.cancelled===true)a.cancel+=w;} }); return a; }
     // Formatea números con peso: entero si es entero, si no un decimal (ej. 7.5)
@@ -1176,7 +1207,7 @@
       window._prodRec={}; _prodKey=0;
       // Por persona: registros de visita agrupados por origen
       const P={};
-      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,recs:[]}; return P[k];};
+      const eP=name=>{const k=name.toLowerCase(); if(!P[k])P[k]={name,key:k,team:teamMap[k]||null,calls:0,contacts:0,minutes:0,sms:0,citas:0,apps:0,recs:[]}; return P[k];};
       Object.entries(dialer).forEach(([k,d])=>{const o=eP(canonName(names[k]||k)); o.calls+=d.calls||0; o.contacts+=d.contacts||0; o.minutes+=d.minutes||0; o.sms+=d.sms||0;});
       // Citas = agendadas por la persona (createdBy), fuente ghl_appointments. Crea también a quien solo agendó.
       const appts=window._apptsByName||{};
@@ -1197,9 +1228,13 @@
         if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&!closers.includes(st)) eP(st).recs.push({...rec,_w:1}); }
       }));
       Object.values(P).forEach(p=>{ p.citas=(appts[p.key]?appts[p.key].n:0); });
+      // Aplicaciones online: crea también a quien SOLO hizo aplicaciones y no aparece
+      // por otro lado, para que no se pierda su trabajo.
+      const appsMap = appsDelPeriodo();
+      Object.entries(appsMap).forEach(([k,n])=>{ eP(canonName(names[k]||k)||k).apps += n; });
       const teamF=window._prodTeam||'all';
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
-      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0||p.citas>0)&&matchTeam(p))
+      const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0||p.citas>0||p.apps>0)&&matchTeam(p))
         // con equipo primero, luego por producción (ventas → visitas → llamadas); los "sin equipo" al final.
         .sort((a,b)=>(a.name===SIN_CERRADOR?1:0)-(b.name===SIN_CERRADOR?1:0)||(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
 
@@ -1227,7 +1262,7 @@
         const mainLbl = (open && !isCC) ? 'Propio' : 'TOTAL';
         const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':''}">
           <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${mainLbl}</div></td>
-          ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}
+          ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}${dcell(p.apps)}
           ${firstFunnel}
         </tr>`;
         let detail='';
@@ -1261,8 +1296,8 @@
 
       // ===== Gran total del equipo — cada venta/visita se cuenta UNA sola vez (dedupe por _vid),
       //       aunque aparezca en el closer y en el setter. + desglose por origen (suma al total). =====
-      const gt={calls:0,contacts:0,minutes:0,sms:0,citas:0};
-      people.forEach(p=>{ gt.calls+=p.calls||0; gt.contacts+=p.contacts||0; gt.minutes+=p.minutes||0; gt.sms+=p.sms||0; gt.citas+=p.citas||0; });
+      const gt={calls:0,contacts:0,minutes:0,sms:0,citas:0,apps:0};
+      people.forEach(p=>{ gt.calls+=p.calls||0; gt.contacts+=p.contacts||0; gt.minutes+=p.minutes||0; gt.sms+=p.sms||0; gt.citas+=p.citas||0; gt.apps+=p.apps||0; });
       const ga={visitas:0,aplico:0,neg:0,aprob:0,vend:0,cancel:0};
       const byOri={Propio:{vis:0,vend:0},'Call Center':{vis:0,vend:0},'Walk-in':{vis:0,vend:0},Otro:{vis:0,vend:0}};
       const _seenV=new Set();
@@ -1283,6 +1318,7 @@
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.minutes)}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.sms)}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.citas||'—'}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.apps||'—'}</td>
         ${fc(ga.visitas)}
         ${fc(ga.aplico, ga.visitas?pctTxt(ga.aplico,ga.visitas):'')}
         <td style="text-align:center;color:#fca5a5;font-size:16px;font-weight:800;">${ga.neg?fmtW(ga.neg):'—'}</td>
@@ -1306,9 +1342,9 @@
         </div>
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
-            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th>
+            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th><th style="text-align:right;">📝app</th>
             <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;">Cancel.</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
-          </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="13" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
+          </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="14" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
     }
 
