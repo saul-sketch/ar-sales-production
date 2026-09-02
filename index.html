@@ -1202,6 +1202,28 @@
       return {k,n,list};
     }
     const SIN_CERRADOR='⚠ Sin cerrador anotado';
+    /* Gente que ya no tiene usuario activo en el CRM. Su producción del período sigue
+       contando —trabajaron esos días y sus números son del equipo— pero se ve apagada
+       para no confundirla con quien sigue trabajando hoy. */
+    function yaNoEsta(p){
+      if (p.name === SIN_CERRADOR) return false;
+      const act = window._crmActive;
+      if (!act || !act.size) return false;      // sin lista, no apagamos a nadie
+      const l = String(p.name||'').trim().toLowerCase();
+      if (!l || act.has(l)) return false;
+      /* Ante la duda, NO se marca. Marcar de inactivo a alguien que sí está trabajando
+         es mucho peor que dejar a un ex-empleado sin apagar. "Eduard" en el reporte y
+         "Eduard Garzon" en el CRM son la misma persona: si el nombre de pila coincide y
+         a uno de los dos le falta el apellido, se da por activo. */
+      const p1 = l.split(/\s+/);
+      for (const a of act) {
+        const p2 = a.split(/\s+/);
+        if (p1[0] !== p2[0]) continue;
+        if (p1.length === 1 || p2.length === 1) return false;          // uno viene sin apellido
+        if (p1[p1.length-1] === p2[p2.length-1]) return false;         // mismo nombre y apellido
+      }
+      return true;
+    }
     function renderProduccion(s){
       const dialer=window._dialerByAgent||{}, teamMap=window._agentTeam||{}, names=window._agentNames||{};
       window._prodRec={}; _prodKey=0;
@@ -1264,7 +1286,7 @@
             return a.name.localeCompare(b.name);
           }
           // Por defecto: con equipo primero, luego producción (ventas → visitas → llamadas).
-          return (a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0);
+          return (yaNoEsta(a)?1:0)-(yaNoEsta(b)?1:0)||(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0);
         });
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
@@ -1289,9 +1311,10 @@
         const isCC = p.team==='cc';
         const firstFunnel = (open && !isCC) ? cells(byO['Propio'],p.name+' · Propio',p.citas) : cells(p.recs,p.name+' · Total', isCC?p.citas:0);
         const mainLbl = (open && !isCC) ? 'Propio' : 'TOTAL';
-        const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':''}">
-          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${mainLbl}</div></td>
-          ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.citas)}${dcell(p.apps)}
+        const fuera = yaNoEsta(p);
+        const summary=`<tr class="clickable-row" onclick="toggleProd('${p.key}')" style="border-top:1px solid var(--gray-200);${open?'background:var(--gray-100);':fuera?'background:var(--gray-50);':''}${fuera&&!open?'opacity:.62;':''}">
+          <td style="font-weight:700;white-space:nowrap;"><span style="color:var(--gray-400);">${open?'▾':'▸'}</span> ${escapeHtml(p.name)}${fuera?'<span style="font-size:9px;font-weight:600;color:var(--gray-400);border:1px solid var(--gray-300);border-radius:100px;padding:1px 6px;margin-left:6px;vertical-align:middle;" title="Ya no tiene usuario activo en el CRM">inactivo</span>':''}<div style="font-size:10px;color:var(--gray-400);font-weight:400;margin-left:14px;">${efTeamLabel(p.team)} · ${mainLbl}</div></td>
+          ${dcell(calls)}${dcell(p.contacts)}${dcell(mins)}${dcell(sms)}${dcell(p.apps)}${dcell(p.citas)}
           ${firstFunnel}
         </tr>`;
         let detail='';
@@ -1346,8 +1369,8 @@
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.contacts||'—'}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.minutes)}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${num0(gt.sms)}</td>
-        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.citas||'—'}</td>
         <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.apps||'—'}</td>
+        <td style="text-align:right;color:#fff;font-size:16px;font-weight:800;">${gt.citas||'—'}</td>
         ${fc(ga.visitas)}
         ${fc(ga.aplico, ga.visitas?pctTxt(ga.aplico,ga.visitas):'')}
         <td style="text-align:center;color:#fca5a5;font-size:16px;font-weight:800;">${ga.neg?fmtW(ga.neg):'—'}</td>
@@ -1371,7 +1394,7 @@
         </div>
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
-            ${cabecera('nombre','Vendedor','left')}${cabecera('calls','📞','right')}${cabecera('contacts','💬cont','right')}${cabecera('minutes','⏱min','right')}${cabecera('sms','✉SMS','right')}${cabecera('citas','📅cita','right')}${cabecera('apps','📝app','right')}
+            ${cabecera('nombre','Vendedor','left')}${cabecera('calls','📞','right')}${cabecera('contacts','💬cont','right')}${cabecera('minutes','⏱min','right')}${cabecera('sms','✉SMS','right')}${cabecera('apps','📝app','right')}${cabecera('citas','📅cita','right')}
             ${cabecera('vis','🚶vis','center')}${cabecera('aplico','Aplicó','center')}${cabecera('neg','Negó','center')}${cabecera('aprob','Aprobó','center')}${cabecera('vend','Vendió','center')}${cabecera('cancel','Cancel.','center')}${cabecera('ratio','Visita→<br>Venta','center','border-left:1px solid var(--gray-200);')}
           </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="14" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
