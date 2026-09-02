@@ -1233,10 +1233,39 @@
       const appsMap = appsDelPeriodo();
       Object.entries(appsMap).forEach(([k,n])=>{ eP(canonName(names[k]||k)||k).apps += n; });
       const teamF=window._prodTeam||'all';
+      // Cómo se saca el número de cada columna, para poder ordenar por cualquiera.
+      // Es el MISMO cálculo que pinta la celda, no una copia: si cambia uno cambia el otro.
+      const VALOR = {
+        nombre:  p => p.name.toLowerCase(),
+        calls:   p => p.calls||0,
+        contacts:p => p.contacts||0,
+        minutes: p => Math.round((p.minutes||0)),
+        sms:     p => p.sms||0,
+        citas:   p => p.citas||0,
+        apps:    p => p.apps||0,
+        vis:     p => prodAgg(p.recs).visitas,
+        aplico:  p => prodAgg(p.recs).aplico,
+        neg:     p => prodAgg(p.recs).neg,
+        aprob:   p => prodAgg(p.recs).aprob,
+        vend:    p => prodAgg(p.recs).vend,
+        cancel:  p => prodAgg(p.recs).cancel,
+        ratio:   p => { const a=prodAgg(p.recs); return a.visitas ? (a.vend-a.cancel)/a.visitas : -1; }
+      };
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
       const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0||p.citas>0||p.apps>0)&&matchTeam(p))
-        // con equipo primero, luego por producción (ventas → visitas → llamadas); los "sin equipo" al final.
-        .sort((a,b)=>(a.name===SIN_CERRADOR?1:0)-(b.name===SIN_CERRADOR?1:0)||(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
+        .sort((a,b)=>{
+          // La fila de "sin cerrador" no es una persona: siempre va al final.
+          const fija=(a.name===SIN_CERRADOR?1:0)-(b.name===SIN_CERRADOR?1:0); if(fija) return fija;
+          const o=window._prodOrden;
+          if(o && VALOR[o.col]){
+            const va=VALOR[o.col](a), vb=VALOR[o.col](b);
+            const d = typeof va==='string' ? va.localeCompare(vb) : va-vb;
+            if(d) return o.desc ? -d : d;
+            return a.name.localeCompare(b.name);
+          }
+          // Por defecto: con equipo primero, luego producción (ventas → visitas → llamadas).
+          return (a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0);
+        });
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
       const pctTxt=(n,d)=>d>0?Math.round(n/d*100)+'%':'';
@@ -1342,10 +1371,29 @@
         </div>
         <div class="section-card" style="padding:0;overflow:hidden;margin-top:12px;">
           <div class="table-wrap"><table><thead><tr>
-            <th>Vendedor</th><th style="text-align:right;">📞</th><th style="text-align:right;">💬cont</th><th style="text-align:right;">⏱min</th><th style="text-align:right;">✉SMS</th><th style="text-align:right;">📅cita</th><th style="text-align:right;">📝app</th>
-            <th style="text-align:center;">🚶vis</th><th style="text-align:center;">Aplicó</th><th style="text-align:center;">Negó</th><th style="text-align:center;">Aprobó</th><th style="text-align:center;">Vendió</th><th style="text-align:center;">Cancel.</th><th style="text-align:center;border-left:1px solid var(--gray-200);">Visita→<br>Venta</th>
+            ${cabecera('nombre','Vendedor','left')}${cabecera('calls','📞','right')}${cabecera('contacts','💬cont','right')}${cabecera('minutes','⏱min','right')}${cabecera('sms','✉SMS','right')}${cabecera('citas','📅cita','right')}${cabecera('apps','📝app','right')}
+            ${cabecera('vis','🚶vis','center')}${cabecera('aplico','Aplicó','center')}${cabecera('neg','Negó','center')}${cabecera('aprob','Aprobó','center')}${cabecera('vend','Vendió','center')}${cabecera('cancel','Cancel.','center')}${cabecera('ratio','Visita→<br>Venta','center','border-left:1px solid var(--gray-200);')}
           </tr></thead><tbody>${rows?rows+footer:'<tr><td colspan="14" class="empty">Sin producción en este día</td></tr>'}</tbody></table></div>
         </div>`;
+    }
+
+    /* Encabezado clicable. Primer click ordena de mayor a menor, que es lo que uno
+       quiere el 99% de las veces ("quién hizo más apps"); el segundo lo invierte; el
+       tercero vuelve al orden normal del tablero. El nombre arranca de la A a la Z. */
+    window._prodOrden = null;
+    function cabecera(col, txt, align, extra){
+      const o = window._prodOrden;
+      const act = o && o.col===col;
+      const flecha = act ? (o.desc ? ' ▾' : ' ▴') : '';
+      return `<th style="text-align:${align};cursor:pointer;user-select:none;white-space:nowrap;${act?'color:var(--gray-900);':''}${extra||''}"
+        onclick="ordenarProd('${col}')" title="Ordenar por esto">${txt}${flecha}</th>`;
+    }
+    function ordenarProd(col){
+      const o = window._prodOrden;
+      if(!o || o.col!==col) window._prodOrden = { col, desc: col!=='nombre' };
+      else if(o.desc === (col!=='nombre')) window._prodOrden = { col, desc: !o.desc };
+      else window._prodOrden = null;   // tercer click: vuelve al orden de siempre
+      render();
     }
 
     // ===== RESUMEN — landing del manager: pulso del embudo + a quién coachear + equipos =====
