@@ -1220,7 +1220,10 @@
         const p2 = a.split(/\s+/);
         if (p1[0] !== p2[0]) continue;
         if (p1.length === 1 || p2.length === 1) return false;          // uno viene sin apellido
-        if (p1[p1.length-1] === p2[p2.length-1]) return false;         // mismo nombre y apellido
+        // Apellido igual = misma persona. NO se juntan por apellido abreviado: en AR hay
+        // gente distinta que comparte nombre de pila, y "Isidro M" no es "Isidro Meza"
+        // ni "Leonardo Urbina" es "Leonardo U" (confirmado por Saúl, 2026-09-02).
+        if (p1[p1.length-1] === p2[p2.length-1]) return false;
       }
       return true;
     }
@@ -1285,8 +1288,16 @@
             if(d) return o.desc ? -d : d;
             return a.name.localeCompare(b.name);
           }
-          // Por defecto: con equipo primero, luego producción (ventas → visitas → llamadas).
-          return (yaNoEsta(a)?1:0)-(yaNoEsta(b)?1:0)||(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0);
+          /* Por defecto: los que siguen en el CRM primero, y dentro de cada grupo por
+             producción — ventas, después visitas, después llamadas. Tener equipo
+             asignado es lo ÚLTIMO que desempata: antes pesaba más que haber vendido, y
+             por eso alguien con una venta quedaba debajo de alguien con cero solo
+             porque al primero no le habían puesto equipo. */
+          return (yaNoEsta(a)?1:0)-(yaNoEsta(b)?1:0)
+              || prodAgg(b.recs).vend-prodAgg(a.recs).vend
+              || b.recs.length-a.recs.length
+              || (b.calls||0)-(a.calls||0)
+              || (a.team?0:1)-(b.team?0:1);
         });
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
