@@ -1170,6 +1170,7 @@
       const n=list.length;
       return {k,n,list};
     }
+    const SIN_CERRADOR='⚠ Sin cerrador anotado';
     function renderProduccion(s){
       const dialer=window._dialerByAgent||{}, teamMap=window._agentTeam||{}, names=window._agentNames||{};
       window._prodRec={}; _prodKey=0;
@@ -1185,6 +1186,12 @@
         const closers=[...new Set([canonName(clean(v.closer)),canonName(clean(v.closer2))].filter(Boolean))];
         const w = closers.length ? 1/closers.length : 1;   // venta/visita en pareja = mitad y mitad
         const rec={...v,_date:r.date,_loc:r.location,_w:w,_vid:_vid++};   // _vid = visita única (para no doble-contar en el total)
+        // Sin cerrador anotado, la visita DESAPARECÍA del listado: nadie se la llevaba y
+        // el denominador de todos quedaba más chico, así que el % de conversión salía
+        // inflado. En agosto eran 24 de 164 — casi 4 puntos de diferencia contra el
+        // reporte del manager, y creciendo (1 en junio, 10 en julio). Ahora caen en una
+        // fila aparte: se ven, y los totales vuelven a cuadrar.
+        if(!closers.length){ eP(SIN_CERRADOR).recs.push(rec); }
         closers.forEach(c=>{ eP(c).recs.push(rec); });
         // La cita de Call Center también cuenta (crédito completo) para el setter que la agendó
         if(v.scheduled_by==='Call Center'){ const st=canonName(clean(v.setter)); if(st&&!closers.includes(st)) eP(st).recs.push({...rec,_w:1}); }
@@ -1194,7 +1201,7 @@
       const matchTeam=p=> teamF==='all' ? true : teamF==='none' ? !p.team : p.team===teamF;
       const people=Object.values(P).filter(p=>(p.recs.length>0||p.calls>0||p.citas>0)&&matchTeam(p))
         // con equipo primero, luego por producción (ventas → visitas → llamadas); los "sin equipo" al final.
-        .sort((a,b)=>(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
+        .sort((a,b)=>(a.name===SIN_CERRADOR?1:0)-(b.name===SIN_CERRADOR?1:0)||(a.team?0:1)-(b.team?0:1)||prodAgg(b.recs).vend-prodAgg(a.recs).vend||b.recs.length-a.recs.length||(b.calls||0)-(a.calls||0));
 
       const ORIGINS=['Propio','Call Center','Walk-in','Otro'];
       const pctTxt=(n,d)=>d>0?Math.round(n/d*100)+'%':'';
