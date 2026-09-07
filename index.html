@@ -485,11 +485,27 @@
       return {from,to:toOut};
     }
 
+
+    // ── La zona horaria del marcador ────────────────────────────────────────
+    // El marcador espera el desfase en MINUTOS, positivo cuando estas detras de
+    // UTC (lo mismo que devuelve getTimezoneOffset). Aqui iba fijo en -300, que
+    // ademas de tener el signo al reves usa horario de invierno: el "dia" salia
+    // de las 3 de la tarde de ayer a las 3 de la tarde de hoy. Las llamadas de
+    // ayer por la tarde contaban como de hoy, y las de hoy despues de las 3 no
+    // contaban. Se calcula el desfase real de Florida, y cambia solo cuando
+    // cambia el horario de verano.
+    function tzFlorida(){
+      const d = new Date();
+      const utc = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }));
+      const fl  = new Date(d.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      return Math.round((utc - fl) / 60000);   // 240 en verano, 300 en invierno
+    }
+
     async function loadDialer(){
       // Live dialer feed via secure proxy → calls + appointments per agent, mapped to Sales Report names
       try{
         const {from,to}=periodRange();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${from}&to=${to}&tz=-300`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${from}&to=${to}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
         if(!res.ok)throw new Error(res.status);
         const data=await res.json();
         const dialerAgents=data.agents||[];
@@ -570,7 +586,7 @@
     async function loadTodayCalls(){
       try{
         const t=todayISO();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
         if(!res.ok)throw new Error(res.status);
         const data=await res.json();
         const rosterById=window._rosterById||{};
@@ -2744,7 +2760,7 @@
       rptTruth={calls:null,contacts:null,appointments:null,showed:null};
       try{
         const t=todayISO();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
         const data=await res.json();
         const row=(data.agents||[]).find(a=>(a.agentName||'').toLowerCase()===me.name.toLowerCase());
         if(row){rptTruth.calls=row.calls||0;rptTruth.contacts=row.contacts!=null?row.contacts:null;rptTruth.appointments=row.appointments||0;}
