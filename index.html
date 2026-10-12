@@ -10,9 +10,14 @@
     var t=parseInt(u.searchParams.get('_')||'0',36);
     if(!t || (Date.now()-t)>30000){
       u.searchParams.set('_', Date.now().toString(36));
+      window.__arReloading=true; /* el #sso (si viene) sigue en la URL y se procesa tras recargar */
       location.replace(u.toString());
     }
   }catch(e){}})();
+  </script>
+  <script>
+  /* Entrada directa desde el menu de AR: lee #sso=<token>, lo guarda en memoria y lo quita de la URL al instante. */
+  (function(){try{if(window.__arReloading)return;var h=location.hash||'';if(h.indexOf('#sso=')===0){window.__arSsoToken=decodeURIComponent(h.slice(5).split('&')[0]||'')||null;history.replaceState(history.state,'',location.pathname+location.search);}}catch(e){window.__arSsoToken=null;}})();
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -389,7 +394,7 @@
       let ident=resolveIdentity();
       if(!ident){
         // Sin datos del CRM: ¿volvió de "Entrar con Google"? Solo Saúl entra así.
-        const g=await googleSession();
+        const g=(await ssoSession())||await googleSession();
         if(g==='ok'){ ident={name:GOOGLE_NAME,email:GOOGLE_ALLOWED,role:'manager'}; window._viaGoogle=true; }
         else{
           if(g==='denied') showGoogleError('Este correo no tiene acceso');
@@ -470,6 +475,18 @@
         try{ await sbAuth.auth.signOut(); }catch(e){}
         return 'denied';
       }catch(e){ cleanOAuthUrl(); return null; }
+    }
+    // Entrada directa desde el menu de AR (#sso=<token>): verificado con Supabase (getUser).
+    // 'ok' = Saúl (mismo camino que Google) · 'denied' = otro correo · null = no vino o no es válido. Nunca se imprime.
+    async function ssoSession(){
+      const t=window.__arSsoToken; window.__arSsoToken=null;
+      if(!t||!sbAuth) return null;
+      try{
+        const {data,error}=await sbAuth.auth.getUser(t);
+        const email=((data&&data.user&&data.user.email)||'').toLowerCase().trim();
+        if(error||!email) return null;
+        return email===GOOGLE_ALLOWED?'ok':'denied';
+      }catch(e){ return null; }
     }
     function showGoogleError(msg){ const el=document.getElementById('g-error'); if(el){ el.textContent=msg; el.style.display='block'; } }
     async function signInGoogle(){
