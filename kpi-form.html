@@ -91,6 +91,17 @@
     .done .check{width:64px;height:64px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;}
     .done h2{font-size:20px;font-weight:800;}.done p{color:var(--gray-500);margin-top:6px;}
     .hidden{display:none;}
+    @media(max-width:480px){.cmp-row{flex-wrap:wrap;gap:6px 10px;}.cmp-row .cl{width:100%;}.cmp-vals{justify-content:flex-start;}.cmp-vals>*{white-space:nowrap;}}
+    /* Mobile (iPhone): campos de 16px (iOS no hace zoom) y todo se puede tocar */
+    @media(max-width:640px),(pointer:coarse) and (max-height:500px){
+      .txt-input,.vsel{font-size:16px;}
+      .txt-input{min-height:42px;}
+      .vsel{min-height:42px;}
+      .visit .vremove{min-height:40px;min-width:40px;font-size:14px;}
+      .pill{min-height:40px;}
+      .field-lbl{font-size:11px;}
+      .role-badge{font-size:11px;}
+    }
   </style>
 </head>
 <body>
