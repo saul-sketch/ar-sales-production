@@ -264,13 +264,19 @@
       }catch(e){me.role=null;}
     }
 
+    // Minutos de desfase de Florida frente a UTC (240 verano / 300 invierno), como espera el marcador.
+    function floridaOffset(){
+      const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'longOffset'}).formatToParts(new Date()).find(x=>x.type==='timeZoneName').value;
+      const m=p.match(/GMT([+-])(\d+)(?::(\d+))?/); if(!m) return 240;
+      return -(m[1]==='-'?-1:1)*(parseInt(m[2],10)*60+parseInt(m[3]||0,10));
+    }
     function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 
     async function loadTruth(){
       // Real numbers for TODAY from the dialer feed + calendar (used only at comparison time)
       try{
         const t=todayISO();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=-300`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${floridaOffset()}`,{headers:SUPA_HEADERS});
         const data=await res.json();
         const row=(data.agents||[]).find(a=>(a.agentName||'').toLowerCase()===me.name.toLowerCase());
         if(row){truth.calls=row.calls||0;truth.contacts=row.contacts!=null?row.contacts:null;truth.appointments=row.appointments||0;}

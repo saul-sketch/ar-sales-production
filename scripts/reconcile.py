@@ -100,13 +100,21 @@ def cal_appts(day):
     url = f"{BRIDGE}/appointments?from={day}&to={day}&by=startTime&withPhone=true&loc={AR_LOC}"
     return http_get(url, {"X-Service-Token": SERVICE_TOKEN}).get("appointments", [])
 
+def florida_offset(day):
+    """Minutos de desfase de Florida frente a UTC en ese día (240 en verano, 300 en invierno).
+    El marcador los espera positivos, igual que getTimezoneOffset(). Con -300 el día corría
+    de 3pm a 3pm."""
+    from zoneinfo import ZoneInfo
+    d = datetime.datetime.strptime(day, "%Y-%m-%d").replace(hour=12, tzinfo=ZoneInfo("America/New_York"))
+    return int(-d.utcoffset().total_seconds() // 60)
+
 def calls_by_agent(day, uid2name):
     """nombre(lower) → {calls, contacts, minutes, sms} de ese día, del ledger del marcador.
 
     El ledger solo conserva ~35 días. Este cron corre a diario y guarda lo de AYER, así
     que el histórico en Supabase es lo único permanente — el tablero lee de aquí para
     cualquier período pasado, no del marcador."""
-    url = f"{BRIDGE}/agents?from={day}&to={day}&tz=-300"
+    url = f"{BRIDGE}/agents?from={day}&to={day}&tz={florida_offset(day)}"
     data = http_get(url, {"X-Service-Token": SERVICE_TOKEN})
     out = {}
     for a in data.get("agents", []):
