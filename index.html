@@ -789,6 +789,15 @@
       rebuildPeriodDialer();
     }
 
+    // Desfase de Florida ("-04:00" verano / "-05:00" invierno) para una fecha YYYY-MM-DD:
+    // la medianoche de Florida expresada con su desfase real, no una hora fija.
+    function flOff(ymd){
+      try{
+        const v=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'longOffset'}).formatToParts(new Date(ymd+'T12:00:00Z')).find(x=>x.type==='timeZoneName').value;
+        const m=v.match(/GMT([+-])(\d+)(?::(\d+))?/); if(!m) return '-04:00';
+        return m[1]+String(m[2]).padStart(2,'0')+':'+String(m[3]||'00').padStart(2,'0');
+      }catch(e){ return '-04:00'; }
+    }
     // Citas AGENDADAS por período, contadas por quien las creó (createdBy) desde ghl_appointments.
     // Fuente correcta: el dialer contaba por "asignado" (closer o nadie) y daba 0 a los setters.
     async function loadAppts(){
@@ -797,7 +806,7 @@
         const toEx=new Date(to+'T00:00:00'); toEx.setDate(toEx.getDate()+1);
         const toS=`${toEx.getFullYear()}-${String(toEx.getMonth()+1).padStart(2,'0')}-${String(toEx.getDate()).padStart(2,'0')}`;
         const rid=window._rosterById||{};
-        const _body=JSON.stringify({from_ts:`${from}T05:00:00Z`,to_ts:`${toS}T05:00:00Z`});
+        const _body=JSON.stringify({from_ts:`${from}T00:00:00${flOff(from)}`,to_ts:`${toS}T00:00:00${flOff(toS)}`});
         const [r,rd,rl,rlc]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_counts_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_booker`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
@@ -838,7 +847,7 @@
         const pEx=new Date(_plast); pEx.setDate(pEx.getDate()+1);
         const ptoS=`${pEx.getFullYear()}-${String(pEx.getMonth()+1).padStart(2,'0')}-${String(pEx.getDate()).padStart(2,'0')}`;
         window._anPrevLabel=pf.slice(0,7);
-        const _pbody=JSON.stringify({from_ts:`${pf}T05:00:00Z`,to_ts:`${ptoS}T05:00:00Z`});
+        const _pbody=JSON.stringify({from_ts:`${pf}T00:00:00${flOff(pf)}`,to_ts:`${ptoS}T00:00:00${flOff(ptoS)}`});
         const [rdc,rlcc,rdcP,roc,rocP]=await Promise.all([
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_daily_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),
           fetch(`${SUPA_URL}/rest/v1/rpc/appt_noshow_lead_by_creator_cal`,{method:'POST',headers:SUPA_HEADERS,body:_body}),

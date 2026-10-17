@@ -33,10 +33,11 @@ const H = { Authorization: `Bearer ${V.AR_GHL_TOKEN}`, Version: '2021-04-15', Ac
 const CALS = V.AR_CALENDARS.split(',');
 const LOC = V.AR_LOCATION;
 
+let fetchFailed = false;
 async function fetchMonth(calId, startMs, endMs) {
   const url = `${GHL}/calendars/events?locationId=${LOC}&calendarId=${calId}&startTime=${startMs}&endTime=${endMs}`;
   const r = await fetch(url, { headers: H });
-  if (!r.ok) { console.warn(`  fetch ${calId} ${new Date(startMs).toISOString().slice(0,7)} → ${r.status}`); return []; }
+  if (!r.ok) { console.warn(`  fetch ${calId} ${new Date(startMs).toISOString().slice(0,7)} → ${r.status}`); fetchFailed = true; return []; }
   const j = await r.json();
   return j.events || [];
 }
@@ -64,6 +65,37 @@ async function upsert(rows) {
     if (attempt === 7) throw new Error(`upsert failed after retries`);
     await new Promise(res => setTimeout(res, 1200 * attempt));
   }
+}
+
+async function sql(query) {
+  const r = await fetch(`https://api.supabase.com/v1/projects/${V.SUPABASE_REF}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${V.SUPABASE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!r.ok) throw new Error(`sql ${r.status}`);
+  return r.json();
+}
+
+// Una cita que se borra o se mueve en el CRM deja de venir en la lectura, pero la fila
+// vieja se quedaba "viva" en la tabla y el tablero la seguia contando (6 de 100 citas
+// de la semana del 9 al 15 de octubre). Aqui se marcan como borradas (reversible: si la
+// cita reaparece, el upsert la deja viva otra vez). Solo si la lectura salio completa y
+// el numero de faltantes es razonable; ante la duda no toca nada.
+async function marcarBorradas(seen, start, end) {
+  if (fetchFailed) { console.warn('Lectura incompleta: no se marcan borradas.'); return; }
+  const rows = await sql(`select id from ghl_appointments where location_id='${LOC}' and deleted=false
+    and start_time >= '${start.toISOString()}' and start_time <= '${end.toISOString()}'`);
+  const faltan = rows.map(r => r.id).filter(id => !seen.has(id));
+  if (!faltan.length) { console.log('Borradas: ninguna.'); return; }
+  if (faltan.length > Math.max(10, rows.length * 0.15)) {
+    console.warn(`Faltan ${faltan.length} de ${rows.length}: demasiadas, no se marcan (revisar a mano).`); return;
+  }
+  for (let i = 0; i < faltan.length; i += 100) {
+    const ids = faltan.slice(i, i + 100).map(id => `'${String(id).replace(/'/g, "''")}'`).join(',');
+    await sql(`update ghl_appointments set deleted=true, synced_at=now() where id in (${ids})`);
+  }
+  console.log(`Borradas en el CRM y marcadas aqui: ${faltan.length}`);
 }
 
 (async () => {
@@ -105,4 +137,5 @@ async function upsert(rows) {
   }
   if (batch.length) await upsert(batch);
   console.log(`\nDone. ${total} appointments upserted.`);
+  await marcarBorradas(seen, start, end);
 })().catch(e => { console.error('SYNC ERROR:', e.message); process.exit(1); });
