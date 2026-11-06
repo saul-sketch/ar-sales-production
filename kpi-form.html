@@ -397,9 +397,9 @@
         try{
           const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied:payload.applied,approved:payload.approved,sold:payload.sold,
             notes:JSON.stringify({kind:'kpi',contacts:payload.contacts,denied:payload.denied,role:me.role,visits_detail:cleanVisits,truth:{calls:truth.calls,contacts:truth.contacts,appointments:truth.appointments}})};
-          const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{
-            method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
-            body:JSON.stringify(core)
+          const r2=await fetch(`${SUPA_URL}/rest/v1/rpc/ar_self_report_guardar`,{
+            method:'POST',headers:SUPA_HEADERS,
+            body:JSON.stringify({p:core})
           });
           if(r2.ok)saved=true;
         }catch(_){}

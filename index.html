@@ -407,6 +407,19 @@
     if(window.innerWidth<=640){ window.Apex={xaxis:{labels:{style:{fontSize:'12px'}}},yaxis:{labels:{style:{fontSize:'12px'}}},legend:{fontSize:'12px'},dataLabels:{style:{fontSize:'12px'}}}; }
     const SUPA_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3eGp1dGFxb3VhZW9jdnhhd2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTIxMzYsImV4cCI6MjA5MjYyODEzNn0.TOigRbaNL5z3Q7hd4llJyqrC6vZwn_-1R-5JudXtJmU';
     const SUPA_HEADERS={apikey:SUPA_ANON,Authorization:`Bearer ${SUPA_ANON}`,'Content-Type':'application/json'};
+    // Sesión firmada: la base de datos solo entrega datos a quien entró (contraseña,
+    // Google o el menú del CRM). El token viaja en el encabezado x-ar-ses.
+    const AR_SES_KEY = 'ar_ses_token';
+    function arPonerSesion(t){ if (!t) return false; SUPA_HEADERS['x-ar-ses'] = t; try{ localStorage.setItem(AR_SES_KEY, t); }catch(e){} return true; }
+    function arQuitarSesion(){ delete SUPA_HEADERS['x-ar-ses']; try{ localStorage.removeItem(AR_SES_KEY); }catch(e){} }
+    try{ const t = localStorage.getItem(AR_SES_KEY); if (t) SUPA_HEADERS['x-ar-ses'] = t; }catch(e){}
+    async function arSesionGoogle(jwt){
+      try{
+        const r = await fetch(`${SUPA_URL}/rest/v1/rpc/ar_sesion_google`, { method:'POST', headers:{ apikey: SUPA_ANON, Authorization: 'Bearer ' + jwt, 'Content-Type':'application/json' }, body:'{}' });
+        const t = await r.json();
+        return typeof t === 'string' && arPonerSesion(t);
+      }catch(e){ return false; }
+    }
 
     // Managers (GHL name/email) — see everything. Match case-insensitive on name or email.
     const MANAGERS=['saul','charles','andreina','karina'];
@@ -488,6 +501,11 @@
 
     document.addEventListener('DOMContentLoaded',async()=>{
       let ident=resolveIdentity();
+      // Viene del menú del CRM con su llave: se cambia por una sesión firmada.
+      if(ident&&ident.email){
+        const k=(new URLSearchParams(location.search).get('k')||'').trim();
+        if(k){ try{ const r=await (await fetch(`${SUPA_URL}/rest/v1/rpc/ar_sesion_crm`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({p_email:ident.email,p_nombre:ident.name,p_k:k})})).json(); if(Array.isArray(r)&&r[0])arPonerSesion(r[0].token); }catch(_){} }
+      }
       if(!ident){
         // Sin datos del CRM: ¿volvió de "Entrar con Google"? Solo Saúl entra así.
         const g=(await ssoSession())||await googleSession();
@@ -567,7 +585,7 @@
         cleanOAuthUrl();
         const s=data&&data.session; if(!s) return null;
         const email=((s.user&&s.user.email)||'').toLowerCase().trim();
-        if(email===GOOGLE_ALLOWED) return 'ok';
+        if(email===GOOGLE_ALLOWED){ await arSesionGoogle(s.access_token); return 'ok'; }
         try{ await sbAuth.auth.signOut(); }catch(e){}
         return 'denied';
       }catch(e){ cleanOAuthUrl(); return null; }
@@ -581,7 +599,8 @@
         const {data,error}=await sbAuth.auth.getUser(t);
         const email=((data&&data.user&&data.user.email)||'').toLowerCase().trim();
         if(error||!email) return null;
-        return email===GOOGLE_ALLOWED?'ok':'denied';
+        if(email===GOOGLE_ALLOWED){ await arSesionGoogle(t); return 'ok'; }
+        return 'denied';
       }catch(e){ return null; }
     }
     function showGoogleError(msg){ const el=document.getElementById('g-error'); if(el){ el.textContent=msg; el.style.display='block'; } }
@@ -595,6 +614,7 @@
     }
     async function signOutGoogle(){
       try{ if(sbAuth) await sbAuth.auth.signOut(); }catch(e){}
+      arQuitarSesion();
       location.replace(location.origin+location.pathname);
     }
 
@@ -2109,9 +2129,9 @@
       const btn=document.getElementById('sr-save-btn');const msg=document.getElementById('sr-save-msg');
       btn.disabled=true;btn.textContent='Guardando…';
       try{
-        const res=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{
-          method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},
-          body:JSON.stringify(payload)
+        const res=await fetch(`${SUPA_URL}/rest/v1/rpc/ar_self_report_guardar`,{
+          method:'POST',headers:SUPA_HEADERS,
+          body:JSON.stringify({p:payload})
         });
         if(!res.ok)throw new Error(await res.text());
         // refresh self reports + re-render to update diffs
@@ -2939,7 +2959,7 @@
         // Save EVERYTHING to the existing table: numbers in columns, full detail (contacts/denied/role/visits/truth) in `notes` as JSON.
         const core={agent_name:me.name,report_date:todayISO(),calls:payload.calls,appointments:payload.appointments,visits:payload.visits,applied,approved,sold,
           notes:JSON.stringify({kind:'kpi',contacts:payload.contacts,denied,role:me.role,visits_detail:cv,truth:{calls:rptTruth.calls,contacts:rptTruth.contacts,appointments:rptTruth.appointments}})};
-        const r2=await fetch(`${SUPA_URL}/rest/v1/ar_agent_self_report?on_conflict=agent_name,report_date`,{method:'POST',headers:{...SUPA_HEADERS,Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(core)});if(r2.ok)saved=true;}catch(_){}}
+        const r2=await fetch(`${SUPA_URL}/rest/v1/rpc/ar_self_report_guardar`,{method:'POST',headers:SUPA_HEADERS,body:JSON.stringify({p:core})});if(r2.ok)saved=true;}catch(_){}}
       document.getElementById('main-content').innerHTML=`<div style="text-align:center;padding:50px 24px;">
         <div style="width:64px;height:64px;border-radius:50%;background:var(--green);color:white;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;">✓</div>
         <div style="font-size:20px;font-weight:800;">¡Reporte enviado!</div>
