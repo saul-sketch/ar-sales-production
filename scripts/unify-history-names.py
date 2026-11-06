@@ -16,7 +16,18 @@ import json, sys, urllib.request, os
 
 SUPA = "https://xwxjutaqouaeocvxawlw.supabase.co"
 ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3eGp1dGFxb3VhZW9jdnhhd2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTIxMzYsImV4cCI6MjA5MjYyODEzNn0.TOigRbaNL5z3Q7hd4llJyqrC6vZwn_-1R-5JudXtJmU"
-H = {"apikey": ANON, "Authorization": f"Bearer {ANON}"}
+
+# Sesion de script: las tablas ya no se leen sin sesion. El token vive fuera del repo.
+def _script_session():
+    try:
+        for l in open(os.path.expanduser("~/.claude/.ar-script-session")):
+            if l.startswith("AR_SCRIPT_SESSION="):
+                return l.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+SES = _script_session()
+H = {"apikey": ANON, "Authorization": f"Bearer {ANON}", "x-ar-ses": SES}
 APLICAR = "--aplicar" in sys.argv
 
 def get(url):

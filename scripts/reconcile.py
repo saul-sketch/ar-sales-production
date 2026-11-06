@@ -28,6 +28,17 @@ AR_LOC = "ez4QcQYqIRKvgT8fIQ22"
 SUPA = "https://xwxjutaqouaeocvxawlw.supabase.co"
 ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3eGp1dGFxb3VhZW9jdnhhd2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTIxMzYsImV4cCI6MjA5MjYyODEzNn0.TOigRbaNL5z3Q7hd4llJyqrC6vZwn_-1R-5JudXtJmU"
 
+# Sesion de script: las tablas ya no se leen sin sesion. El token vive fuera del repo.
+def _script_session():
+    try:
+        for l in open(os.path.expanduser("~/.claude/.ar-script-session")):
+            if l.startswith("AR_SCRIPT_SESSION="):
+                return l.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+SES = _script_session()
+
 def phone(p):
     d = re.sub(r"\D","",str(p or ""))
     return d[-10:] if len(d)>=10 else None
@@ -58,7 +69,7 @@ def load_mapping():
     El tablero resuelve nombres exactamente en este mismo orden, así que las llaves
     que escribimos aquí coinciden con las que él busca."""
     global ALIAS
-    hdr = {"apikey": ANON, "Authorization": f"Bearer {ANON}"}
+    hdr = {"apikey": ANON, "Authorization": f"Bearer {ANON}", "x-ar-ses": SES}
     out = {}
     # La tabla manual primero, para que crm_roster la PISE — el tablero resuelve en ese
     # mismo orden (roster antes que manual). Si aquí lo hiciéramos al revés, quien tenga
@@ -159,7 +170,7 @@ def status_by_agent(appts, uid2name):
 
 def sr_visits(day):
     url = f"{SUPA}/rest/v1/ar_daily_reports?select=visits&date=eq.{day}"
-    data = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}"})
+    data = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}", "x-ar-ses": SES})
     out = {}
     for r in data:
         for v in (r.get("visits") or []):
@@ -177,7 +188,7 @@ CAL_FIELDS = STATUSES + ("other", "total")
 def leer_dia(day):
     """Lo que ya quedó cerrado de ese día (None si nunca se cerró)."""
     url = f"{SUPA}/rest/v1/ar_reconciliation_daily?select=*&recon_date=eq.{day}"
-    rows = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}"})
+    rows = http_get(url, {"apikey": ANON, "Authorization": f"Bearer {ANON}", "x-ar-ses": SES})
     return rows[0] if rows else None
 
 def fusionar_agentes(viejo, nuevo):
@@ -231,7 +242,7 @@ def upsert(row, previo=None):
     req = urllib.request.Request(
         f"{SUPA}/rest/v1/ar_reconciliation_daily?on_conflict=recon_date",
         data=body, method="POST",
-        headers={"apikey": ANON, "Authorization": f"Bearer {ANON}",
+        headers={"apikey": ANON, "Authorization": f"Bearer {ANON}", "x-ar-ses": SES,
                  "Content-Type": "application/json",
                  "Prefer": "resolution=merge-duplicates,return=minimal"})
     urllib.request.urlopen(req, timeout=30).read()
