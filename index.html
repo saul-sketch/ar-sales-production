@@ -668,6 +668,8 @@
     }
 
     const PROXY_URL='https://xwxjutaqouaeocvxawlw.supabase.co/functions/v1/dialer-proxy';
+    // El marcador no acepta el encabezado de sesión (x-ar-ses): va solo con la llave pública.
+    const PROXY_HEADERS={apikey:SUPA_ANON,Authorization:`Bearer ${SUPA_ANON}`};
 
     function periodRange(){
       const now=new Date();
@@ -708,7 +710,7 @@
       // Live dialer feed via secure proxy → calls + appointments per agent, mapped to Sales Report names
       try{
         const {from,to}=periodRange();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${from}&to=${to}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${from}&to=${to}&tz=${tzFlorida()}`,{headers:PROXY_HEADERS});
         if(!res.ok)throw new Error(res.status);
         const data=await res.json();
         const dialerAgents=data.agents||[];
@@ -789,7 +791,7 @@
     async function loadTodayCalls(){
       try{
         const t=todayISO();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:PROXY_HEADERS});
         if(!res.ok)throw new Error(res.status);
         const data=await res.json();
         const rosterById=window._rosterById||{};
@@ -2972,7 +2974,7 @@
       rptTruth={calls:null,contacts:null,appointments:null,showed:null};
       try{
         const t=todayISO();
-        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:SUPA_HEADERS});
+        const res=await fetch(`${PROXY_URL}?resource=agents&from=${t}&to=${t}&tz=${tzFlorida()}`,{headers:PROXY_HEADERS});
         const data=await res.json();
         const row=(data.agents||[]).find(a=>(a.agentName||'').toLowerCase()===me.name.toLowerCase());
         if(row){rptTruth.calls=row.calls||0;rptTruth.contacts=row.contacts!=null?row.contacts:null;rptTruth.appointments=row.appointments||0;}
